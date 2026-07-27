@@ -330,6 +330,11 @@ class YouTube:
 
         Get straight to the point, don't start with unnecessary things like, "welcome to this video".
 
+        THE FIRST SENTENCE MUST BE A POWERFUL HOOK: a surprising fact, a bold claim
+        or an intriguing question directly about the subject, so the viewer stays.
+        NEVER open with generic phrases like "La evolución de...", "En este video..."
+        or "¿Sabías que...". Be specific and punchy from the first word.
+
         Obviously, the script should be related to the subject of the video.
         
         YOU MUST NOT EXCEED THE {sentence_length} SENTENCES LIMIT. MAKE SURE THE {sentence_length} SENTENCES ARE SHORT.
@@ -340,7 +345,9 @@ class YouTube:
         Subject: {self.subject}
         Language: {self.language}
         """
-        completion = self.generate_response(prompt)
+        # Reasoning enabled here on purpose: the script is where writing
+        # quality matters most and the extra minutes are local-only cost
+        completion = generate_text(prompt, think=True)
 
         # Apply regex to remove *
         completion = re.sub(r"\*", "", completion)
@@ -423,10 +430,10 @@ class YouTube:
         Returns:
             image_prompts (List[str]): Generated List of image prompts.
         """
-        # One image per script sentence, capped to keep image API usage low
-        n_prompts = min(
-            getattr(self, "_sentence_length", get_script_sentence_length()), 6
-        )
+        # Aim for a scene change every ~3s of speech (Spanish TTS averages
+        # ~15 characters per second), capped to keep generation time sane
+        estimated_seconds = max(len(self.script) / 15, 12)
+        n_prompts = max(6, min(14, round(estimated_seconds / 3)))
         # One coherent visual style per video, varied across videos
         self._image_style = random.choice(IMAGE_STYLES)
         if get_verbose():
@@ -816,6 +823,10 @@ class YouTube:
         with open(srt_path, "w", encoding="utf-8") as file:
             file.write(subtitles)
 
+        # AssemblyAI emits sentence-level entries; split into short chunks
+        # (the whisper path already produces word-timed karaoke chunks)
+        equalize_subtitles(srt_path, 16)
+
         return srt_path
 
     def _format_srt_timestamp(self, seconds: float) -> str:
@@ -859,19 +870,32 @@ class YouTube:
             device=get_whisper_device(),
             compute_type=get_whisper_compute_type(),
         )
-        segments, _ = model.transcribe(audio_path, vad_filter=True)
+        segments, _ = model.transcribe(
+            audio_path, vad_filter=True, word_timestamps=True
+        )
+
+        # Karaoke-style captions: groups of 2-3 words timed to the voice
+        words = [w for segment in segments for w in (segment.words or [])]
+        chunks, current = [], []
+        for word in words:
+            current.append(word)
+            text = "".join(w.word for w in current).strip()
+            if len(current) >= 3 or len(text) >= 16:
+                chunks.append(current)
+                current = []
+        if current:
+            chunks.append(current)
 
         lines = []
-        for idx, segment in enumerate(segments, start=1):
-            start = self._format_srt_timestamp(segment.start)
-            end = self._format_srt_timestamp(segment.end)
-            text = str(segment.text).strip()
-
+        for idx, chunk in enumerate(chunks, start=1):
+            text = "".join(w.word for w in chunk).strip()
             if not text:
                 continue
-
             lines.append(str(idx))
-            lines.append(f"{start} --> {end}")
+            lines.append(
+                f"{self._format_srt_timestamp(chunk[0].start)} --> "
+                f"{self._format_srt_timestamp(chunk[-1].end)}"
+            )
             lines.append(text)
             lines.append("")
 
@@ -893,7 +917,6 @@ class YouTube:
         threads = get_threads()
         tts_clip = AudioFileClip(self.tts_path)
         max_duration = tts_clip.duration
-        req_dur = max_duration / len(self.images)
 
         # Make a generator that returns a TextClip when called with consecutive
         # ImageMagick on Windows swallows backslashes in -font paths and
@@ -913,53 +936,76 @@ class YouTube:
 
         print(colored("[+] Combining images...", "blue"))
 
+        CROSSFADE = 0.4
+
+        def _ken_burns_scene(image_path: str, duration: float) -> CompositeVideoClip:
+            """
+            Builds one scene: the image cropped to 9:16 with a slow random
+            zoom and pan (Ken Burns) so nothing on screen is ever static.
+            """
+            base = ImageClip(image_path)
+
+            # Crop to a 9:16 area
+            if round((base.w / base.h), 4) < 0.5625:
+                base = crop(
+                    base,
+                    width=base.w,
+                    height=round(base.w / 0.5625),
+                    x_center=base.w / 2,
+                    y_center=base.h / 2,
+                )
+            else:
+                base = crop(
+                    base,
+                    width=round(0.5625 * base.h),
+                    height=base.h,
+                    x_center=base.w / 2,
+                    y_center=base.h / 2,
+                )
+
+            # Oversize so zoom/pan never shows the frame edge
+            base = base.resize((1244, 2212))
+
+            zoom_in = random.random() < 0.5
+            z0, z1 = (1.0, 1.10) if zoom_in else (1.10, 1.0)
+            pan_x = random.randint(-30, 30)
+            pan_y = random.randint(-45, 45)
+
+            moving = base.resize(lambda t: z0 + (z1 - z0) * (t / duration))
+
+            def position(t):
+                progress = t / duration
+                x = -(1244 - 1080) / 2 + pan_x * (2 * progress - 1)
+                y = -(2212 - 1920) / 2 + pan_y * (2 * progress - 1)
+                return (x, y)
+
+            scene = CompositeVideoClip(
+                [moving.set_position(position)], size=(1080, 1920)
+            )
+            return scene.set_duration(duration).set_fps(30)
+
+        # One scene every ~3s, cycling through the images if there are
+        # fewer than needed; crossfades overlap so durations compensate
+        n_scenes = max(len(self.images), int(round(max_duration / 3)))
+        scene_dur = (max_duration + CROSSFADE * (n_scenes - 1)) / n_scenes
+        image_cycle = [self.images[i % len(self.images)] for i in range(n_scenes)]
+
         clips = []
-        tot_dur = 0
-        # Add downloaded clips over and over until the duration of the audio (max_duration) has been reached
-        while tot_dur < max_duration:
-            for image_path in self.images:
-                clip = ImageClip(image_path)
-                clip.duration = req_dur
-                clip = clip.set_fps(30)
+        for i, image_path in enumerate(image_cycle):
+            if get_verbose():
+                info(f" => Building scene {i + 1}/{n_scenes}: {os.path.basename(image_path)}")
+            scene = _ken_burns_scene(image_path, scene_dur)
+            if i > 0:
+                scene = scene.crossfadein(CROSSFADE)
+            clips.append(scene)
 
-                # Not all images are same size,
-                # so we need to resize them
-                if round((clip.w / clip.h), 4) < 0.5625:
-                    if get_verbose():
-                        info(f" => Resizing Image: {image_path} to 1080x1920")
-                    clip = crop(
-                        clip,
-                        width=clip.w,
-                        height=round(clip.w / 0.5625),
-                        x_center=clip.w / 2,
-                        y_center=clip.h / 2,
-                    )
-                else:
-                    if get_verbose():
-                        info(f" => Resizing Image: {image_path} to 1920x1080")
-                    clip = crop(
-                        clip,
-                        width=round(0.5625 * clip.h),
-                        height=clip.h,
-                        x_center=clip.w / 2,
-                        y_center=clip.h / 2,
-                    )
-                clip = clip.resize((1080, 1920))
-
-                # FX (Fade In)
-                # clip = clip.fadein(2)
-
-                clips.append(clip)
-                tot_dur += clip.duration
-
-        final_clip = concatenate_videoclips(clips)
+        final_clip = concatenate_videoclips(clips, method="compose", padding=-CROSSFADE)
         final_clip = final_clip.set_fps(30)
         random_song = choose_random_song()
 
         subtitles = None
         try:
             subtitles_path = self.generate_subtitles(self.tts_path)
-            equalize_subtitles(subtitles_path, 18)
             # Parse the SRT ourselves: moviepy opens it with the locale
             # encoding (cp1252 on Windows), which mangles accents
             with open(subtitles_path, "r", encoding="utf-8") as srt_file:

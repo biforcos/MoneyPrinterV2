@@ -57,7 +57,12 @@ def unload_model(model_name: str = None) -> None:
         pass
 
 
-def generate_text(prompt: str, model_name: str = None, temperature: float = None) -> str:
+def generate_text(
+    prompt: str,
+    model_name: str = None,
+    temperature: float = None,
+    think: bool = False,
+) -> str:
     """
     Generates text using the local Ollama server.
 
@@ -65,6 +70,7 @@ def generate_text(prompt: str, model_name: str = None, temperature: float = None
         prompt (str): User prompt
         model_name (str): Optional model name override
         temperature (float): Optional sampling temperature (higher = more varied)
+        think (bool): Enable the model's reasoning phase (slower, better prose)
 
     Returns:
         response (str): Generated text
@@ -82,7 +88,7 @@ def generate_text(prompt: str, model_name: str = None, temperature: float = None
             model=model,
             messages=[{"role": "user", "content": prompt}],
             options=options,
-            think=False,
+            think=think,
         )
     except ollama.ResponseError:
         # Some models don't accept the think parameter

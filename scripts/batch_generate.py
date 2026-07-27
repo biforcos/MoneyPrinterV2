@@ -12,6 +12,9 @@ Usage, from the project root:
 """
 
 import argparse
+import atexit
+import ctypes
+import json
 import os
 import sys
 import time
@@ -27,6 +30,36 @@ from classes.YouTube import YouTube
 from config import get_comfyui_base_url, get_image_provider, get_ollama_base_url, get_ollama_model
 from llm_provider import select_model
 from utils import rem_temp_files
+
+
+LOCK_PATH = os.path.join(ROOT, ".mp", "batch_lock.json")
+
+
+def acquire_single_instance_lock() -> None:
+    """
+    Two batches sharing .mp/ delete each other's temp files, so only one
+    may run. The lock is a JSON file (survives rem_temp_files) holding
+    the owner PID; a stale lock from a dead process is reclaimed.
+    """
+    if os.path.exists(LOCK_PATH):
+        try:
+            with open(LOCK_PATH, "r", encoding="utf-8") as f:
+                owner_pid = int(json.load(f)["pid"])
+        except Exception:
+            owner_pid = None
+        if owner_pid:
+            handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, owner_pid)
+            if handle:
+                ctypes.windll.kernel32.CloseHandle(handle)
+                raise SystemExit(
+                    f"Ya hay un batch corriendo (PID {owner_pid}). "
+                    "Solo puede haber uno a la vez: comparten los temporales de .mp/."
+                )
+    with open(LOCK_PATH, "w", encoding="utf-8") as f:
+        json.dump({"pid": os.getpid()}, f)
+    atexit.register(
+        lambda: os.path.exists(LOCK_PATH) and os.remove(LOCK_PATH)
+    )
 
 
 def ensure_local_providers() -> None:
@@ -73,6 +106,7 @@ def main() -> None:
     parser.add_argument("--no-upload", action="store_true", help="solo generar, no subir")
     args = parser.parse_args()
 
+    acquire_single_instance_lock()
     ensure_local_providers()
 
     accounts = get_accounts("youtube")
