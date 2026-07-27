@@ -101,13 +101,32 @@ class YouTube:
         self.options.add_argument("-profile")
         self.options.add_argument(self._fp_profile_path)
 
-        # Set the service
-        self.service: Service = Service(GeckoDriverManager().install())
+        # The browser is started lazily (see _ensure_browser): generation can
+        # take many minutes and an idle window opened up-front tends to get
+        # closed or die before the upload needs it
+        self.browser: webdriver.Firefox = None
 
-        # Initialize the browser
-        self.browser: webdriver.Firefox = webdriver.Firefox(
-            service=self.service, options=self.options
-        )
+    def _ensure_browser(self) -> webdriver.Firefox:
+        """
+        Returns a live browser, starting or restarting it if needed.
+
+        Returns:
+            browser (webdriver.Firefox): A usable browser instance.
+        """
+        if self.browser is not None:
+            try:
+                _ = self.browser.current_url
+                return self.browser
+            except Exception:
+                try:
+                    self.browser.quit()
+                except Exception:
+                    pass
+                self.browser = None
+
+        self.service: Service = Service(GeckoDriverManager().install())
+        self.browser = webdriver.Firefox(service=self.service, options=self.options)
+        return self.browser
 
     @property
     def niche(self) -> str:
@@ -850,7 +869,7 @@ class YouTube:
         Returns:
             channel_id (str): The Channel ID.
         """
-        driver = self.browser
+        driver = self._ensure_browser()
         driver.get("https://studio.youtube.com")
         time.sleep(2)
         channel_id = driver.current_url.split("/")[-1]
@@ -868,7 +887,7 @@ class YouTube:
         try:
             self.get_channel_id()
 
-            driver = self.browser
+            driver = self._ensure_browser()
             verbose = get_verbose()
 
             # Go to youtube.com/upload
@@ -1022,7 +1041,11 @@ class YouTube:
             return True
         except Exception:
             error(f"YouTube upload failed:\n{traceback.format_exc()}")
-            self.browser.quit()
+            if self.browser is not None:
+                try:
+                    self.browser.quit()
+                except Exception:
+                    pass
             return False
 
     def get_videos(self) -> List[dict]:
