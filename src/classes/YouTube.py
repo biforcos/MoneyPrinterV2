@@ -595,13 +595,14 @@ class YouTube:
 
         # Make a generator that returns a TextClip when called with consecutive
         generator = lambda txt: TextClip(
-            txt,
+            txt.upper(),
             font=os.path.join(get_fonts_dir(), get_font()),
-            fontsize=100,
-            color="#FFFF00",
+            fontsize=85,
+            color="white",
             stroke_color="black",
-            stroke_width=5,
-            size=(1080, 1920),
+            stroke_width=3,
+            # Narrower than the frame so long chunks wrap with side margins
+            size=(920, None),
             method="caption",
         )
 
@@ -653,9 +654,8 @@ class YouTube:
         subtitles = None
         try:
             subtitles_path = self.generate_subtitles(self.tts_path)
-            equalize_subtitles(subtitles_path, 10)
+            equalize_subtitles(subtitles_path, 18)
             subtitles = SubtitlesClip(subtitles_path, generator)
-            subtitles.set_pos(("center", "center"))
         except Exception as e:
             warning(f"Failed to generate subtitles, continuing without subtitles: {e}")
 
@@ -669,7 +669,11 @@ class YouTube:
         final_clip = final_clip.set_duration(tts_clip.duration)
 
         if subtitles is not None:
-            final_clip = CompositeVideoClip([final_clip, subtitles])
+            # Below-center keeps faces/subjects visible; relative so it
+            # holds for any resolution
+            final_clip = CompositeVideoClip(
+                [final_clip, subtitles.set_position(("center", 0.63), relative=True)]
+            )
 
         final_clip.write_videofile(combined_image_path, threads=threads)
 
