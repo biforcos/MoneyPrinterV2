@@ -633,6 +633,12 @@ class YouTube:
         """
         path = os.path.join(ROOT_DIR, ".mp", str(uuid4()) + ".wav")
 
+        # End every video with the configured subscribe call-to-action so it
+        # gets spoken and picked up by the subtitles
+        cta = get_subscribe_cta().strip()
+        if cta:
+            self.script = f"{self.script.rstrip()} {cta}"
+
         # Clean script, remove every character that is not a word character, a space, a period, a question mark, or an exclamation mark.
         self.script = re.sub(r"[^\w\s.?!]", "", self.script)
 

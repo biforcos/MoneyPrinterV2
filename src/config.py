@@ -243,6 +243,16 @@ def get_comfyui_base_url() -> str:
     with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
         return json.load(file).get("comfyui_base_url", "http://127.0.0.1:8188")
 
+def get_subscribe_cta() -> str:
+    """
+    Gets the call-to-action sentence appended to every video script.
+
+    Returns:
+        cta (str): The CTA text, or empty string to disable it
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return json.load(file).get("subscribe_cta", "")
+
 def get_tts_provider() -> str:
     """
     Gets the TTS provider from the config file.
