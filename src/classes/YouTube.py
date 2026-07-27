@@ -316,6 +316,21 @@ class YouTube:
 
         return completion
 
+    def _clean_metadata_text(self, text: str) -> str:
+        """
+        Strips the wrapping quotes, markdown and label prefixes LLMs tend to
+        add, which look obviously machine-generated on the channel page.
+        """
+        text = (text or "").strip().strip("\"'«»“”").strip()
+        text = re.sub(
+            r"^(t[íi]tulo|title|descripci[óo]n|description)\s*:\s*",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+        text = re.sub(r"[*_`]", "", text)
+        return text.strip().strip("\"'«»“”").strip()
+
     def generate_metadata(self) -> dict:
         """
         Generates Video metadata for the to-be-uploaded YouTube Short (Title, Description).
@@ -325,8 +340,13 @@ class YouTube:
         """
         title = ""
         for _ in range(3):
-            title = self.generate_response(
-                f"Please generate a YouTube Video Title for the following subject, including hashtags: {self.subject}. Only return the title, nothing else. Limit the title under 100 characters."
+            title = self._clean_metadata_text(
+                self.generate_response(
+                    f"Please generate a YouTube Video Title for the following subject, including hashtags: {self.subject}. "
+                    f"The title MUST be written in this language: {self.language}. "
+                    "Do not wrap it in quotes. Only return the title, nothing else. "
+                    "Limit the title under 100 characters."
+                )
             )
             if len(title) <= 100:
                 break
@@ -334,10 +354,15 @@ class YouTube:
                 warning("Generated Title is too long. Retrying...")
 
         if len(title) > 100:
-            title = title[:97].rstrip() + "..."
+            # Cut on a word boundary and drop any half-written hashtag
+            title = title[:97].rsplit(" ", 1)[0].rstrip("#").rstrip() + "..."
 
-        description = self.generate_response(
-            f"Please generate a YouTube Video Description for the following script: {self.script}. Only return the description, nothing else."
+        description = self._clean_metadata_text(
+            self.generate_response(
+                f"Please generate a YouTube Video Description for the following script: {self.script}. "
+                f"The description MUST be written in this language: {self.language}. "
+                "Do not use markdown formatting or quotes. Only return the description, nothing else."
+            )
         )
 
         self.metadata = {"title": title, "description": description}
