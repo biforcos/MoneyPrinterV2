@@ -335,6 +335,9 @@ class YouTube:
         NEVER open with generic phrases like "La evolución de...", "En este video..."
         or "¿Sabías que...". Be specific and punchy from the first word.
 
+        THE LAST SENTENCE must connect back to the idea of the first sentence,
+        so the video feels seamless when it loops and replays.
+
         Obviously, the script should be related to the subject of the video.
         
         YOU MUST NOT EXCEED THE {sentence_length} SENTENCES LIMIT. MAKE SURE THE {sentence_length} SENTENCES ARE SHORT.
@@ -960,10 +963,13 @@ class YouTube:
 
         CROSSFADE = 0.4
 
-        def _ken_burns_scene(image_path: str, duration: float) -> CompositeVideoClip:
+        def _ken_burns_scene(
+            image_path: str, duration: float, dramatic: bool = False
+        ) -> CompositeVideoClip:
             """
             Builds one scene: the image cropped to 9:16 with a slow random
             zoom and pan (Ken Burns) so nothing on screen is ever static.
+            The dramatic variant (opening scene) always pushes in, harder.
             """
             base = ImageClip(image_path)
 
@@ -988,8 +994,11 @@ class YouTube:
             # Oversize so zoom/pan never shows the frame edge
             base = base.resize((1244, 2212))
 
-            zoom_in = random.random() < 0.5
-            z0, z1 = (1.0, 1.10) if zoom_in else (1.10, 1.0)
+            if dramatic:
+                z0, z1 = (1.0, 1.16)
+            else:
+                zoom_in = random.random() < 0.5
+                z0, z1 = (1.0, 1.10) if zoom_in else (1.10, 1.0)
             pan_x = random.randint(-30, 30)
             pan_y = random.randint(-45, 45)
 
@@ -1016,7 +1025,7 @@ class YouTube:
         for i, image_path in enumerate(image_cycle):
             if get_verbose():
                 info(f" => Building scene {i + 1}/{n_scenes}: {os.path.basename(image_path)}")
-            scene = _ken_burns_scene(image_path, scene_dur)
+            scene = _ken_burns_scene(image_path, scene_dur, dramatic=(i == 0))
             if i > 0:
                 scene = scene.crossfadein(CROSSFADE)
             clips.append(scene)
@@ -1035,6 +1044,14 @@ class YouTube:
                     ((s.start.total_seconds(), s.end.total_seconds()), s.content)
                     for s in srt_lib.parse(srt_file.read())
                 ]
+            # Keep the opening frames text-free: thumbnails often sample
+            # them and a half-sentence caption looks broken on the grid
+            SUBS_START = 0.6
+            parsed_subs = [
+                ((max(start, SUBS_START), end), text)
+                for (start, end), text in parsed_subs
+                if end > SUBS_START
+            ]
             subtitles = SubtitlesClip(parsed_subs, generator)
         except Exception as e:
             warning(f"Failed to generate subtitles, continuing without subtitles: {e}")
