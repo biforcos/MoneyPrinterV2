@@ -3,6 +3,7 @@ import base64
 import json
 import time
 import os
+import random
 import shutil
 import traceback
 import requests
@@ -408,9 +409,113 @@ class YouTube:
                 warning(f"Failed to generate image with Nano Banana 2 API: {str(e)}")
             return None
 
+    def generate_image_comfyui(self, prompt: str) -> str:
+        """
+        Generates an AI Image using a local ComfyUI server (FLUX.1-schnell GGUF).
+
+        Args:
+            prompt (str): Prompt for image generation
+
+        Returns:
+            path (str): The path to the generated image.
+        """
+        print(f"Generating Image using local ComfyUI (FLUX): {prompt}")
+
+        base_url = get_comfyui_base_url().rstrip("/")
+        workflow = {
+            "unet": {
+                "class_type": "UnetLoaderGGUF",
+                "inputs": {"unet_name": "flux1-schnell-Q4_K_S.gguf"},
+            },
+            "clip": {
+                "class_type": "DualCLIPLoaderGGUF",
+                "inputs": {
+                    "clip_name1": "t5-v1_1-xxl-encoder-Q5_K_M.gguf",
+                    "clip_name2": "clip_l.safetensors",
+                    "type": "flux",
+                },
+            },
+            "positive": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": prompt, "clip": ["clip", 0]},
+            },
+            "negative": {
+                "class_type": "CLIPTextEncode",
+                "inputs": {"text": "", "clip": ["clip", 0]},
+            },
+            "latent": {
+                "class_type": "EmptySD3LatentImage",
+                "inputs": {"width": 768, "height": 1344, "batch_size": 1},
+            },
+            "sampler": {
+                "class_type": "KSampler",
+                "inputs": {
+                    "model": ["unet", 0],
+                    "positive": ["positive", 0],
+                    "negative": ["negative", 0],
+                    "latent_image": ["latent", 0],
+                    "seed": random.randint(0, 2**32 - 1),
+                    "steps": 4,
+                    "cfg": 1.0,
+                    "sampler_name": "euler",
+                    "scheduler": "simple",
+                    "denoise": 1.0,
+                },
+            },
+            "vae": {
+                "class_type": "VAELoader",
+                "inputs": {"vae_name": "ae.safetensors"},
+            },
+            "decode": {
+                "class_type": "VAEDecode",
+                "inputs": {"samples": ["sampler", 0], "vae": ["vae", 0]},
+            },
+            "save": {
+                "class_type": "SaveImage",
+                "inputs": {"images": ["decode", 0], "filename_prefix": "mpv2"},
+            },
+        }
+
+        try:
+            response = requests.post(
+                f"{base_url}/prompt", json={"prompt": workflow}, timeout=30
+            )
+            response.raise_for_status()
+            prompt_id = response.json()["prompt_id"]
+
+            # First generation includes model load; allow up to ~10 minutes
+            for _ in range(120):
+                time.sleep(5)
+                history = requests.get(
+                    f"{base_url}/history/{prompt_id}", timeout=30
+                ).json()
+                if prompt_id not in history:
+                    continue
+                for node_output in history[prompt_id]["outputs"].values():
+                    for image_info in node_output.get("images", []):
+                        image = requests.get(
+                            f"{base_url}/view",
+                            params={
+                                "filename": image_info["filename"],
+                                "subfolder": image_info.get("subfolder", ""),
+                                "type": image_info.get("type", "output"),
+                            },
+                            timeout=60,
+                        )
+                        image.raise_for_status()
+                        return self._persist_image(image.content, "ComfyUI FLUX")
+                break
+
+            warning("ComfyUI did not produce an image in time.")
+            return None
+        except Exception as e:
+            if get_verbose():
+                warning(f"Failed to generate image with ComfyUI: {str(e)}")
+            return None
+
     def generate_image(self, prompt: str) -> str:
         """
-        Generates an AI Image based on the given prompt using Nano Banana 2.
+        Generates an AI Image based on the given prompt using the configured provider.
 
         Args:
             prompt (str): Reference for image generation
@@ -418,6 +523,8 @@ class YouTube:
         Returns:
             path (str): The path to the generated image.
         """
+        if get_image_provider() == "comfyui":
+            return self.generate_image_comfyui(prompt)
         return self.generate_image_nanobanana2(prompt)
 
     def generate_script_to_speech(self, tts_instance: TTS) -> str:

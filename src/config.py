@@ -223,6 +223,26 @@ def get_outreach_message_body_file() -> str:
     with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
         return json.load(file)["outreach_message_body_file"]
 
+def get_image_provider() -> str:
+    """
+    Gets the image generation provider from the config file.
+
+    Returns:
+        provider (str): "nanobanana2" (Gemini API) or "comfyui" (local FLUX/SD server)
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+        return json.load(file).get("image_provider", "nanobanana2")
+
+def get_comfyui_base_url() -> str:
+    """
+    Gets the base URL of the local ComfyUI server.
+
+    Returns:
+        url (str): The ComfyUI base URL
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+        return json.load(file).get("comfyui_base_url", "http://127.0.0.1:8188")
+
 def get_tts_provider() -> str:
     """
     Gets the TTS provider from the config file.
