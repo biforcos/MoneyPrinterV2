@@ -176,30 +176,72 @@ class YouTube:
         with open(self._topic_history_path(), "w", encoding="utf-8") as f:
             json.dump(history[-100:], f, ensure_ascii=False, indent=2)
 
+    def _pop_queued_topic(self) -> str:
+        """
+        Takes (and removes) the first pending topic from topics.txt, a
+        user-maintained queue at the project root. Returns None when the
+        file is missing or has no pending entries.
+        """
+        path = os.path.join(ROOT_DIR, "topics.txt")
+        if not os.path.exists(path):
+            return None
+
+        with open(path, "r", encoding="utf-8-sig") as f:
+            lines = f.readlines()
+
+        picked, remaining = None, []
+        for line in lines:
+            stripped = line.strip()
+            if picked is None and stripped and not stripped.startswith("#"):
+                picked = stripped
+                continue
+            remaining.append(line)
+
+        if picked is not None:
+            with open(path, "w", encoding="utf-8") as f:
+                f.writelines(remaining)
+
+        return picked
+
     def generate_topic(self) -> str:
         """
-        Generates a topic based on the YouTube Channel niche, avoiding
-        already-covered topics and varying the angle between runs.
+        Generates a topic: first from the user's topics.txt queue if it has
+        pending entries, otherwise auto-generated with a random angle,
+        avoiding already-covered topics.
 
         Returns:
             topic (str): The generated topic.
         """
         history = self._load_topic_history()
-        angle = random.choice(TOPIC_ANGLES)
+        queued = self._pop_queued_topic()
 
-        prompt = (
-            f"Please generate a specific video idea about the following niche: {self.niche}. "
-            f"Approach it from this angle: {angle}. "
-            "Make it exactly one sentence. Only return the topic, nothing else."
-        )
-        if history:
-            recent = "\n- ".join(history[-20:])
-            prompt += (
-                "\nDo NOT repeat or rephrase any of these already covered topics:"
-                f"\n- {recent}"
+        if queued:
+            if get_verbose():
+                info(f" => Using queued topic: {queued}")
+            prompt = (
+                "Generate a specific video idea based on this instruction from "
+                f'the channel owner: "{queued}". '
+                f"The channel niche is: {self.niche}. "
+                "Keep every detail the owner asked for. Make it exactly one "
+                "sentence. Only return the topic, nothing else."
             )
-
-        completion = generate_text(prompt, temperature=1.15)
+            completion = generate_text(prompt, temperature=0.9)
+        else:
+            angle = random.choice(TOPIC_ANGLES)
+            if get_verbose():
+                info(f" => Topic angle: {angle}")
+            prompt = (
+                f"Please generate a specific video idea about the following niche: {self.niche}. "
+                f"Approach it from this angle: {angle}. "
+                "Make it exactly one sentence. Only return the topic, nothing else."
+            )
+            if history:
+                recent = "\n- ".join(history[-20:])
+                prompt += (
+                    "\nDo NOT repeat or rephrase any of these already covered topics:"
+                    f"\n- {recent}"
+                )
+            completion = generate_text(prompt, temperature=1.15)
 
         if not completion:
             error("Failed to generate Topic.")
@@ -208,9 +250,6 @@ class YouTube:
 
         history.append(completion)
         self._save_topic_history(history)
-
-        if get_verbose():
-            info(f" => Topic angle: {angle}")
 
         return completion
 
@@ -892,8 +931,20 @@ class YouTube:
             self.generate_image(prompt)
 
         if not self.images:
-            error("No images were generated. Check your Nano Banana 2 API credits/quota.")
+            error("No images were generated. Check your image provider (ComfyUI server or API credits).")
             raise RuntimeError("Cannot build a video without images")
+
+        # Mirror of the pre-image unload: free ComfyUI's VRAM so the next
+        # LLM phase (or the next batch iteration) can load Ollama on GPU
+        if get_image_provider() == "comfyui":
+            try:
+                requests.post(
+                    f"{get_comfyui_base_url().rstrip('/')}/free",
+                    json={"unload_models": True, "free_memory": True},
+                    timeout=15,
+                )
+            except Exception:
+                pass
 
         # Generate the TTS
         self.generate_script_to_speech(tts_instance)

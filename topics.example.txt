@@ -1,0 +1,11 @@
+# Cola de temas para los vídeos (copia este fichero como topics.txt)
+#
+# - Un tema por línea, con todos los detalles que quieras.
+# - Cada vídeo consume la primera línea pendiente (se borra al usarse).
+# - Cuando no quedan líneas, los temas se generan automáticamente.
+# - Las líneas que empiezan por # se ignoran.
+#
+# Ejemplos:
+# hablar sobre The Witcher 3, sus expansiones, y por qué Blood and Wine se considera el mejor DLC de la historia
+# top 5 jefes finales más difíciles de los soulslike
+# la historia del desarrollo caótico de Cyberpunk 2077 y su redención
