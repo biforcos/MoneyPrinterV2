@@ -10,4 +10,5 @@ google-maps-scraper-0.9.7/
 niche.txt
 *.exe
 auto.sh
-.DS_Storebranding/
+.DS_Store
+branding/
