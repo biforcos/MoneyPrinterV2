@@ -1344,6 +1344,7 @@ class YouTube:
                 # Schedule for the next free daily slot instead of
                 # publishing immediately
                 slot = self._next_schedule_slot()
+                self.scheduled_for = slot
                 if verbose:
                     info(f"\t=> Scheduling for {slot:%d/%m/%Y %H:%M}...")
 

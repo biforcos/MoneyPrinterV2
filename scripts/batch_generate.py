@@ -24,6 +24,8 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 
 import requests
 
+from datetime import datetime
+
 from cache import get_accounts
 from classes.Tts import TTS
 from classes.YouTube import YouTube
@@ -122,12 +124,16 @@ def main() -> None:
 
     tts = TTS()
     produced, uploaded, consecutive_failures = 0, 0, 0
+    started = datetime.now()
+    results = []
 
     try:
         while args.max <= 0 or produced < args.max:
             iteration = produced + 1
             print(f"\n[batch] ===== Vídeo {iteration}{f'/{args.max}' if args.max > 0 else ''} =====")
             rem_temp_files()
+            entry = {"status": "generation_failed"}
+            iteration_start = datetime.now()
             try:
                 youtube = YouTube(
                     account["id"],
@@ -138,31 +144,69 @@ def main() -> None:
                 )
                 youtube.generate_video(tts)
                 produced += 1
+                entry.update(
+                    topic=getattr(youtube, "subject", ""),
+                    title=youtube.metadata.get("title", ""),
+                    file=os.path.basename(youtube.video_path),
+                    status="generated",
+                )
 
                 if args.no_upload:
                     print(f"[batch] Generado (sin subir): {youtube.video_path}")
                 else:
                     if youtube.upload_video():
                         uploaded += 1
+                        entry["status"] = "uploaded"
+                        entry["url"] = youtube.uploaded_video_url
+                        slot = getattr(youtube, "scheduled_for", None)
+                        if slot:
+                            entry["scheduled_for"] = slot.isoformat(timespec="minutes")
                         print(f"[batch] Subido: {youtube.uploaded_video_url}")
                     else:
+                        entry["status"] = "upload_failed"
                         print("[batch] La subida falló; el vídeo queda en videos/.")
                 consecutive_failures = 0
             except Exception as e:
                 consecutive_failures += 1
+                entry["error"] = str(e)
                 print(f"[batch] Error en la iteración: {e}")
                 if consecutive_failures >= 3:
                     print("[batch] 3 fallos seguidos; abortando para no quemar recursos.")
                     break
+            finally:
+                entry["minutes"] = round(
+                    (datetime.now() - iteration_start).total_seconds() / 60, 1
+                )
+                results.append(entry)
 
             if args.delay > 0 and (args.max <= 0 or produced < args.max):
                 print(f"[batch] Esperando {args.delay}s...")
                 time.sleep(args.delay)
     except KeyboardInterrupt:
         print("\n[batch] Detenido por el usuario.")
+    finally:
+        # Machine-readable summary for external reporting (Telegram
+        # briefings etc.): always written, even after a crash
+        os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
+        summary = {
+            "started": started.isoformat(timespec="seconds"),
+            "finished": datetime.now().isoformat(timespec="seconds"),
+            "account": account["nickname"],
+            "produced": produced,
+            "uploaded": uploaded,
+            "videos": results,
+        }
+        with open(
+            os.path.join(ROOT, "logs", "last_run.json"), "w", encoding="utf-8"
+        ) as f:
+            json.dump(summary, f, ensure_ascii=False, indent=2)
+        with open(
+            os.path.join(ROOT, "logs", "history.jsonl"), "a", encoding="utf-8"
+        ) as f:
+            f.write(json.dumps(summary, ensure_ascii=False) + "\n")
 
     print(f"\n[batch] Resumen: {produced} generados, {uploaded} subidos.")
-    print("[batch] Copias permanentes en videos/.")
+    print("[batch] Copias permanentes en videos/ y resumen en logs/last_run.json.")
 
     if args.shutdown_comfyui:
         print("[batch] Apagando ComfyUI...")
