@@ -104,6 +104,11 @@ def main() -> None:
     parser.add_argument("--max", type=int, default=0, help="máximo de vídeos (0 = sin límite)")
     parser.add_argument("--delay", type=int, default=0, help="segundos de espera entre vídeos")
     parser.add_argument("--no-upload", action="store_true", help="solo generar, no subir")
+    parser.add_argument(
+        "--shutdown-comfyui",
+        action="store_true",
+        help="apaga el servidor ComfyUI al terminar (para ejecuciones nocturnas)",
+    )
     args = parser.parse_args()
 
     acquire_single_instance_lock()
@@ -158,6 +163,22 @@ def main() -> None:
 
     print(f"\n[batch] Resumen: {produced} generados, {uploaded} subidos.")
     print("[batch] Copias permanentes en videos/.")
+
+    if args.shutdown_comfyui:
+        print("[batch] Apagando ComfyUI...")
+        import subprocess
+
+        subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "Get-CimInstance Win32_Process | "
+                "Where-Object { $_.CommandLine -like '*ComfyUI*main.py*' } | "
+                "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
+            ],
+            check=False,
+        )
 
 
 if __name__ == "__main__":

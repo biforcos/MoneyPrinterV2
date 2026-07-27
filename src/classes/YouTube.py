@@ -666,9 +666,22 @@ class YouTube:
                 "class_type": "VAEDecode",
                 "inputs": {"samples": ["sampler", 0], "vae": ["vae", 0]},
             },
+            # RealESRGAN x2 (768x1344 -> 1536x2688) so the frame reaches
+            # 1080x1920 sharp instead of stretched
+            "upscale_model": {
+                "class_type": "UpscaleModelLoader",
+                "inputs": {"model_name": "RealESRGAN_x2plus.pth"},
+            },
+            "upscale": {
+                "class_type": "ImageUpscaleWithModel",
+                "inputs": {
+                    "upscale_model": ["upscale_model", 0],
+                    "image": ["decode", 0],
+                },
+            },
             "save": {
                 "class_type": "SaveImage",
-                "inputs": {"images": ["decode", 0], "filename_prefix": "mpv2"},
+                "inputs": {"images": ["upscale", 0], "filename_prefix": "mpv2"},
             },
         }
 
@@ -1019,9 +1032,34 @@ class YouTube:
 
         random_song_clip = AudioFileClip(random_song).set_fps(44100)
 
-        # Turn down volume
+        # Turn down volume, trim to the video and fade out at the end
         random_song_clip = random_song_clip.fx(afx.volumex, 0.1)
-        comp_audio = CompositeAudioClip([tts_clip.set_fps(44100), random_song_clip])
+        if random_song_clip.duration > max_duration:
+            random_song_clip = random_song_clip.subclip(0, max_duration)
+        random_song_clip = random_song_clip.fx(afx.audio_fadeout, 2.5)
+
+        audio_layers = [tts_clip.set_fps(44100), random_song_clip]
+
+        # Subtle whoosh on every scene change
+        sfx_dir = os.path.join(ROOT_DIR, "assets", "sfx")
+        sfx_files = (
+            [os.path.join(sfx_dir, f) for f in os.listdir(sfx_dir) if f.endswith(".wav")]
+            if os.path.isdir(sfx_dir)
+            else []
+        )
+        if sfx_files:
+            for i in range(1, n_scenes):
+                boundary = i * (scene_dur - CROSSFADE)
+                if boundary >= max_duration:
+                    break
+                audio_layers.append(
+                    AudioFileClip(random.choice(sfx_files))
+                    .set_fps(44100)
+                    .fx(afx.volumex, 0.18)
+                    .set_start(max(0.0, boundary - 0.25))
+                )
+
+        comp_audio = CompositeAudioClip(audio_layers)
 
         final_clip = final_clip.set_audio(comp_audio)
         final_clip = final_clip.set_duration(tts_clip.duration)

@@ -1,5 +1,6 @@
 import asyncio
 import os
+import random
 import subprocess
 
 import soundfile as sf
@@ -32,7 +33,10 @@ class TTS:
         # edge-tts outputs mp3; convert to wav so downstream consumers
         # (moviepy, whisper) get the format the pipeline expects
         mp3_path = output_file + ".tmp.mp3"
-        communicate = edge_tts.Communicate(text, self._voice)
+        # Shorts narration reads better slightly faster than natural pace;
+        # small per-video variation keeps deliveries from sounding identical
+        rate = f"+{random.randint(4, 10)}%"
+        communicate = edge_tts.Communicate(text, self._voice, rate=rate)
         asyncio.run(communicate.save(mp3_path))
 
         subprocess.run(
