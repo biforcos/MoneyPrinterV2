@@ -29,7 +29,13 @@ from datetime import datetime
 from cache import get_accounts
 from classes.Tts import TTS
 from classes.YouTube import YouTube
-from config import get_comfyui_base_url, get_image_provider, get_ollama_base_url, get_ollama_model
+from config import (
+    get_comfyui_base_url,
+    get_image_provider,
+    get_ollama_base_url,
+    get_ollama_model,
+    get_summary_export_path,
+)
 from llm_provider import select_model
 from utils import rem_temp_files
 
@@ -204,6 +210,20 @@ def main() -> None:
             os.path.join(ROOT, "logs", "history.jsonl"), "a", encoding="utf-8"
         ) as f:
             f.write(json.dumps(summary, ensure_ascii=False) + "\n")
+
+        # Optional extra copy for external assistants (e.g. into WSL).
+        # Best-effort: an unreachable destination must never kill the batch.
+        export_path = get_summary_export_path().strip()
+        if export_path:
+            try:
+                import shutil
+
+                shutil.copy2(
+                    os.path.join(ROOT, "logs", "last_run.json"), export_path
+                )
+                print(f"[batch] Resumen exportado a {export_path}")
+            except Exception as e:
+                print(f"[batch] No se pudo exportar el resumen: {e}")
 
     print(f"\n[batch] Resumen: {produced} generados, {uploaded} subidos.")
     print("[batch] Copias permanentes en videos/ y resumen en logs/last_run.json.")

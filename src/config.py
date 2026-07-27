@@ -254,6 +254,17 @@ def get_script_sentence_length_range() -> list:
     with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("script_sentence_length_range", [])
 
+def get_summary_export_path() -> str:
+    """
+    Gets the optional extra destination for logs/last_run.json (e.g. a
+    WSL/network path an external assistant can read).
+
+    Returns:
+        path (str): Destination file path, or empty string to disable
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return json.load(file).get("summary_export_path", "")
+
 def get_publish_mode() -> str:
     """
     Gets the publish mode for uploaded videos.
