@@ -47,6 +47,33 @@ YOUTUBE_MADE_FOR_KIDS_NAME = "VIDEO_MADE_FOR_KIDS_MFK"
 YOUTUBE_NOT_MADE_FOR_KIDS_NAME = "VIDEO_MADE_FOR_KIDS_NOT_MFK"
 YOUTUBE_NEXT_BUTTON_ID = "next-button"
 YOUTUBE_SHOW_MORE_BUTTON_ID = "toggle-button"
+YOUTUBE_SCHEDULE_EXPAND_ID = "second-container-expand-button"
+YOUTUBE_DATEPICKER_TRIGGER_ID = "datepicker-trigger"
+YOUTUBE_TIME_CONTAINER_ID = "time-of-day-container"
+
+# Visual styles: each video draws one so the channel page shows variety
+# while frames within a video stay coherent
+IMAGE_STYLES = [
+    "hyperrealistic cinematic photography, dramatic lighting",
+    "retro 90s videogame concept art, painterly brushstrokes",
+    "vibrant pixel art, 16-bit aesthetic",
+    "modern anime illustration, bold saturated colors",
+    "dark graphic novel style, heavy ink shadows",
+    "stylized 3D render, glossy materials, soft studio lighting",
+    "synthwave retrofuturism, neon grid, sunset gradients",
+    "epic fantasy digital painting, rich detail",
+]
+
+# Title hook formats, drawn per video so the channel page doesn't read
+# like one template
+TITLE_STYLES = [
+    "a question that creates curiosity",
+    "a numbered list teaser",
+    "a bold claim that sparks debate",
+    "a nobody-tells-you-this style hook",
+    "a surprising fact teaser",
+    "a versus or comparison framing",
+]
 
 # Random angles injected into topic generation so consecutive videos
 # don't converge on the same idea

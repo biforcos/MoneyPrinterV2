@@ -14,6 +14,8 @@
   "threads": 2,
   "zip_url": "",
   "is_for_kids": false,
+  "publish_mode": "public",
+  "schedule_hours": [13, 20],
   "google_maps_scraper": "https://github.com/gosom/google-maps-scraper/archive/refs/tags/v0.9.7.zip",
   "email": {
     "smtp_server": "smtp.gmail.com",
@@ -35,6 +37,7 @@
   "font": "bold_font.ttf",
   "imagemagick_path": "Path to magick.exe or on linux/macOS just /usr/bin/convert",
   "script_sentence_length": 4,
+  "script_sentence_length_range": [4, 7],
   "subscribe_cta": "",
   "post_bridge": {
     "enabled": false,

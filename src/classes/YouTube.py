@@ -31,7 +31,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from moviepy.video.tools.subtitles import SubtitlesClip
 from webdriver_manager.firefox import GeckoDriverManager
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Set ImageMagick Path
 change_settings({"IMAGEMAGICK_BINARY": get_imagemagick_path()})
@@ -106,6 +106,41 @@ class YouTube:
         # take many minutes and an idle window opened up-front tends to get
         # closed or die before the upload needs it
         self.browser: webdriver.Firefox = None
+
+    def _next_schedule_slot(self) -> datetime:
+        """
+        Computes the next free publication slot: the earliest configured
+        daily hour (with random minute jitter) after both now+1h and the
+        last slot handed out. Persists state so consecutive batch videos
+        get consecutive slots.
+
+        Returns:
+            slot (datetime): The datetime to schedule the next video at.
+        """
+        state_path = os.path.join(ROOT_DIR, ".mp", "schedule_state.json")
+        floor = datetime.now() + timedelta(hours=1)
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                last = datetime.fromisoformat(json.load(f)["last"])
+            # 3h exclusion so jitter can't drop two videos in the same
+            # daily slot window
+            floor = max(floor, last + timedelta(hours=3))
+        except Exception:
+            pass
+
+        hours = sorted(get_schedule_hours() or [13, 20])
+        for day_offset in range(0, 60):
+            day = datetime.now().date() + timedelta(days=day_offset)
+            for hour in hours:
+                slot = datetime.combine(day, datetime.min.time()) + timedelta(
+                    hours=hour, minutes=random.randint(0, 44)
+                )
+                if slot > floor:
+                    with open(state_path, "w", encoding="utf-8") as f:
+                        json.dump({"last": slot.isoformat()}, f)
+                    return slot
+
+        return floor
 
     def _ensure_browser(self) -> webdriver.Firefox:
         """
@@ -275,7 +310,14 @@ class YouTube:
         Returns:
             script (str): The script of the video.
         """
-        sentence_length = get_script_sentence_length()
+        length_range = get_script_sentence_length_range()
+        if len(length_range) == 2:
+            sentence_length = random.randint(length_range[0], length_range[1])
+        else:
+            sentence_length = get_script_sentence_length()
+        # Remembered so generate_prompts derives the image count from the
+        # actual length of this video
+        self._sentence_length = sentence_length
         prompt = f"""
         Generate a script for a video in {sentence_length} sentences, depending on the subject of the video.
 
@@ -338,11 +380,13 @@ class YouTube:
         Returns:
             metadata (dict): The generated metadata.
         """
+        title_style = random.choice(TITLE_STYLES)
         title = ""
         for _ in range(3):
             title = self._clean_metadata_text(
                 self.generate_response(
                     f"Please generate a YouTube Video Title for the following subject, including hashtags: {self.subject}. "
+                    f"Write it as {title_style}. "
                     f"The title MUST be written in this language: {self.language}. "
                     "Do not wrap it in quotes. Only return the title, nothing else. "
                     "Limit the title under 100 characters."
@@ -360,6 +404,9 @@ class YouTube:
         description = self._clean_metadata_text(
             self.generate_response(
                 f"Please generate a YouTube Video Description for the following script: {self.script}. "
+                "It must have: a short engaging summary (2 sentences max), then one short "
+                "question inviting viewers to answer in the comments, and end with 2-3 "
+                "relevant hashtags on the last line. "
                 f"The description MUST be written in this language: {self.language}. "
                 "Do not use markdown formatting or quotes. Only return the description, nothing else."
             )
@@ -377,7 +424,13 @@ class YouTube:
             image_prompts (List[str]): Generated List of image prompts.
         """
         # One image per script sentence, capped to keep image API usage low
-        n_prompts = min(get_script_sentence_length(), 6)
+        n_prompts = min(
+            getattr(self, "_sentence_length", get_script_sentence_length()), 6
+        )
+        # One coherent visual style per video, varied across videos
+        self._image_style = random.choice(IMAGE_STYLES)
+        if get_verbose():
+            info(f" => Image style: {self._image_style}")
 
         prompt = f"""
         Generate {n_prompts} Image Prompts for AI Image Generation,
@@ -437,7 +490,9 @@ class YouTube:
         if len(image_prompts) > n_prompts:
             image_prompts = image_prompts[: int(n_prompts)]
 
-        self.image_prompts = image_prompts
+        self.image_prompts = [
+            f"{p}, {self._image_style}" for p in image_prompts
+        ]
 
         success(f"Generated {len(image_prompts)} Image Prompts.")
 
@@ -1175,12 +1230,51 @@ class YouTube:
             next_button = driver.find_element(By.ID, YOUTUBE_NEXT_BUTTON_ID)
             next_button.click()
 
-            # Set as unlisted
-            if verbose:
-                info("\t=> Setting as unlisted...")
+            if get_publish_mode() == "schedule":
+                # Schedule for the next free daily slot instead of
+                # publishing immediately
+                slot = self._next_schedule_slot()
+                if verbose:
+                    info(f"\t=> Scheduling for {slot:%d/%m/%Y %H:%M}...")
 
-            radio_button = driver.find_elements(By.XPATH, YOUTUBE_RADIO_BUTTON_XPATH)
-            radio_button[2].click()
+                expand = driver.find_element(By.ID, YOUTUBE_SCHEDULE_EXPAND_ID)
+                driver.execute_script(
+                    "arguments[0].scrollIntoView(); arguments[0].click();", expand
+                )
+                time.sleep(2)
+
+                datepicker = driver.find_element(By.ID, YOUTUBE_DATEPICKER_TRIGGER_ID)
+                driver.execute_script(
+                    "arguments[0].scrollIntoView(); arguments[0].click();", datepicker
+                )
+                time.sleep(2)
+                date_input = next(
+                    e
+                    for e in driver.find_elements(By.CSS_SELECTOR, "input")
+                    if e.is_displayed() and "202" in (e.get_attribute("value") or "")
+                )
+                date_input.send_keys(Keys.CONTROL, "a")
+                date_input.send_keys(slot.strftime("%d/%m/%Y"))
+                date_input.send_keys(Keys.ENTER)
+                time.sleep(1)
+
+                time_container = driver.find_element(By.ID, YOUTUBE_TIME_CONTAINER_ID)
+                time_input = time_container.find_element(By.TAG_NAME, "input")
+                driver.execute_script(
+                    "arguments[0].scrollIntoView(); arguments[0].click();", time_input
+                )
+                time.sleep(1)
+                time_input.send_keys(Keys.CONTROL, "a")
+                time_input.send_keys(slot.strftime("%H:%M"))
+                time_input.send_keys(Keys.ENTER)
+                time.sleep(1)
+            else:
+                # Publish immediately as public
+                if verbose:
+                    info("\t=> Setting as public...")
+
+                radio_button = driver.find_elements(By.XPATH, YOUTUBE_RADIO_BUTTON_XPATH)
+                radio_button[2].click()
 
             if verbose:
                 info("\t=> Clicking done button...")

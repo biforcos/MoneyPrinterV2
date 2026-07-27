@@ -243,6 +243,38 @@ def get_comfyui_base_url() -> str:
     with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("comfyui_base_url", "http://127.0.0.1:8188")
 
+def get_script_sentence_length_range() -> list:
+    """
+    Gets the optional [min, max] range for script sentence count. When set,
+    each video draws a random length so durations vary naturally.
+
+    Returns:
+        range (list): [min, max] or empty list to use the fixed length
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return json.load(file).get("script_sentence_length_range", [])
+
+def get_publish_mode() -> str:
+    """
+    Gets the publish mode for uploaded videos.
+
+    Returns:
+        mode (str): "public" (publish immediately) or "schedule" (spread
+        uploads over daily slots)
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return json.load(file).get("publish_mode", "public")
+
+def get_schedule_hours() -> list:
+    """
+    Gets the daily publication slot hours used when publish_mode is "schedule".
+
+    Returns:
+        hours (list): Hours of day (0-23) to publish at, e.g. [13, 20]
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return json.load(file).get("schedule_hours", [13, 20])
+
 def get_subscribe_cta() -> str:
     """
     Gets the call-to-action sentence appended to every video script.
