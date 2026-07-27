@@ -845,6 +845,13 @@ class YouTube:
         # Generate the Image Prompts
         self.generate_prompts()
 
+        # With local image generation, free Ollama's VRAM first: the LLM and
+        # the diffusion model don't fit together on a 12 GB GPU
+        if get_image_provider() == "comfyui":
+            from llm_provider import unload_model
+
+            unload_model()
+
         # Generate the Images
         for prompt in self.image_prompts:
             self.generate_image(prompt)
@@ -971,6 +978,25 @@ class YouTube:
                 is_for_kids_checkbox.click()
 
             time.sleep(0.5)
+
+            # Disclose AI-generated (altered/synthetic) content
+            if verbose:
+                info("\t=> Setting AI content disclosure...")
+            try:
+                show_more = driver.find_element(By.ID, YOUTUBE_SHOW_MORE_BUTTON_ID)
+                driver.execute_script(
+                    "arguments[0].scrollIntoView(); arguments[0].click();", show_more
+                )
+                time.sleep(2)
+                altered_yes = driver.find_element(
+                    By.NAME, YOUTUBE_ALTERED_CONTENT_YES_NAME
+                )
+                driver.execute_script(
+                    "arguments[0].scrollIntoView(); arguments[0].click();", altered_yes
+                )
+                time.sleep(0.5)
+            except Exception as disclosure_err:
+                warning(f"Could not set AI content disclosure: {disclosure_err}")
 
             # Click next
             if verbose:

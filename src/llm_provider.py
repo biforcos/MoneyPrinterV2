@@ -40,6 +40,23 @@ def get_active_model() -> str | None:
     return _selected_model
 
 
+def unload_model(model_name: str = None) -> None:
+    """
+    Asks Ollama to unload the model from VRAM immediately, freeing the GPU
+    for other workloads (e.g. local image generation).
+
+    Args:
+        model_name (str): Optional model name override
+    """
+    model = model_name or _selected_model
+    if not model:
+        return
+    try:
+        _client().chat(model=model, messages=[], keep_alive=0)
+    except Exception:
+        pass
+
+
 def generate_text(prompt: str, model_name: str = None) -> str:
     """
     Generates text using the local Ollama server.
