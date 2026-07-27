@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from cache import get_accounts
 from classes.YouTube import YouTube
+from config import get_ollama_model
 from llm_provider import select_model, generate_text
 
 
@@ -35,7 +36,7 @@ def main() -> None:
     print(f"Guion recuperado: {script_text[:200]}...")
 
     account = get_accounts("youtube")[0]
-    select_model("qwen3:8b")
+    select_model(get_ollama_model() or "qwen3:8b")
 
     title = generate_text(
         "Genera un título para un YouTube Short en español sobre este guion, "

@@ -330,6 +330,10 @@ class YouTube:
 
         Get straight to the point, don't start with unnecessary things like, "welcome to this video".
 
+        STICK TO WELL-KNOWN, VERIFIABLE FACTS. NEVER invent specific numbers,
+        dates, names or events you are not sure about — vague but true beats
+        precise but false.
+
         THE FIRST SENTENCE MUST BE A POWERFUL HOOK: a surprising fact, a bold claim
         or an intriguing question directly about the subject, so the viewer stays.
         NEVER open with generic phrases like "La evolución de...", "En este video..."
