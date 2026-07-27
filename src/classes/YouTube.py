@@ -5,6 +5,7 @@ import time
 import os
 import random
 import shutil
+import srt as srt_lib
 import traceback
 import requests
 import assemblyai as aai
@@ -637,7 +638,7 @@ class YouTube:
 
         srt_path = os.path.join(ROOT_DIR, ".mp", str(uuid4()) + ".srt")
 
-        with open(srt_path, "w") as file:
+        with open(srt_path, "w", encoding="utf-8") as file:
             file.write(subtitles)
 
         return srt_path
@@ -720,9 +721,12 @@ class YouTube:
         req_dur = max_duration / len(self.images)
 
         # Make a generator that returns a TextClip when called with consecutive
+        # ImageMagick on Windows swallows backslashes in -font paths and
+        # silently falls back to its default font, so use forward slashes
+        subtitle_font = os.path.join(get_fonts_dir(), get_font()).replace("\\", "/")
         generator = lambda txt: TextClip(
             txt.upper(),
-            font=os.path.join(get_fonts_dir(), get_font()),
+            font=subtitle_font,
             fontsize=85,
             color="white",
             stroke_color="black",
@@ -781,7 +785,14 @@ class YouTube:
         try:
             subtitles_path = self.generate_subtitles(self.tts_path)
             equalize_subtitles(subtitles_path, 18)
-            subtitles = SubtitlesClip(subtitles_path, generator)
+            # Parse the SRT ourselves: moviepy opens it with the locale
+            # encoding (cp1252 on Windows), which mangles accents
+            with open(subtitles_path, "r", encoding="utf-8") as srt_file:
+                parsed_subs = [
+                    ((s.start.total_seconds(), s.end.total_seconds()), s.content)
+                    for s in srt_lib.parse(srt_file.read())
+                ]
+            subtitles = SubtitlesClip(parsed_subs, generator)
         except Exception as e:
             warning(f"Failed to generate subtitles, continuing without subtitles: {e}")
 
