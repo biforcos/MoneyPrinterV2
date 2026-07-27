@@ -57,13 +57,14 @@ def unload_model(model_name: str = None) -> None:
         pass
 
 
-def generate_text(prompt: str, model_name: str = None) -> str:
+def generate_text(prompt: str, model_name: str = None, temperature: float = None) -> str:
     """
     Generates text using the local Ollama server.
 
     Args:
         prompt (str): User prompt
         model_name (str): Optional model name override
+        temperature (float): Optional sampling temperature (higher = more varied)
 
     Returns:
         response (str): Generated text
@@ -74,10 +75,13 @@ def generate_text(prompt: str, model_name: str = None) -> str:
             "No Ollama model selected. Call select_model() first or pass model_name."
         )
 
+    options = {"temperature": temperature} if temperature is not None else None
+
     try:
         response = _client().chat(
             model=model,
             messages=[{"role": "user", "content": prompt}],
+            options=options,
             think=False,
         )
     except ollama.ResponseError:
@@ -85,6 +89,7 @@ def generate_text(prompt: str, model_name: str = None) -> str:
         response = _client().chat(
             model=model,
             messages=[{"role": "user", "content": prompt}],
+            options=options,
         )
 
     content = response["message"]["content"]

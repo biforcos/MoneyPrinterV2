@@ -161,21 +161,56 @@ class YouTube:
         """
         return generate_text(prompt, model_name=model_name)
 
+    def _topic_history_path(self) -> str:
+        # A .json file survives rem_temp_files(), which only removes non-JSON
+        return os.path.join(ROOT_DIR, ".mp", f"topic_history_{self._account_uuid}.json")
+
+    def _load_topic_history(self) -> List[str]:
+        try:
+            with open(self._topic_history_path(), "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    def _save_topic_history(self, history: List[str]) -> None:
+        with open(self._topic_history_path(), "w", encoding="utf-8") as f:
+            json.dump(history[-100:], f, ensure_ascii=False, indent=2)
+
     def generate_topic(self) -> str:
         """
-        Generates a topic based on the YouTube Channel niche.
+        Generates a topic based on the YouTube Channel niche, avoiding
+        already-covered topics and varying the angle between runs.
 
         Returns:
             topic (str): The generated topic.
         """
-        completion = self.generate_response(
-            f"Please generate a specific video idea that takes about the following topic: {self.niche}. Make it exactly one sentence. Only return the topic, nothing else."
+        history = self._load_topic_history()
+        angle = random.choice(TOPIC_ANGLES)
+
+        prompt = (
+            f"Please generate a specific video idea about the following niche: {self.niche}. "
+            f"Approach it from this angle: {angle}. "
+            "Make it exactly one sentence. Only return the topic, nothing else."
         )
+        if history:
+            recent = "\n- ".join(history[-20:])
+            prompt += (
+                "\nDo NOT repeat or rephrase any of these already covered topics:"
+                f"\n- {recent}"
+            )
+
+        completion = generate_text(prompt, temperature=1.15)
 
         if not completion:
             error("Failed to generate Topic.")
 
         self.subject = completion
+
+        history.append(completion)
+        self._save_topic_history(history)
+
+        if get_verbose():
+            info(f" => Topic angle: {angle}")
 
         return completion
 

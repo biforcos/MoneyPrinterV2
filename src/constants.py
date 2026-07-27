@@ -47,6 +47,25 @@ YOUTUBE_MADE_FOR_KIDS_NAME = "VIDEO_MADE_FOR_KIDS_MFK"
 YOUTUBE_NOT_MADE_FOR_KIDS_NAME = "VIDEO_MADE_FOR_KIDS_NOT_MFK"
 YOUTUBE_NEXT_BUTTON_ID = "next-button"
 YOUTUBE_SHOW_MORE_BUTTON_ID = "toggle-button"
+
+# Random angles injected into topic generation so consecutive videos
+# don't converge on the same idea
+TOPIC_ANGLES = [
+    "little-known facts and trivia",
+    "a top 5 ranking",
+    "hidden secrets and easter eggs",
+    "myths that everyone believes but are false",
+    "world records and extreme achievements",
+    "the biggest failure or flop in this space",
+    "the surprising technology behind it",
+    "an iconic character, person or item",
+    "mistakes beginners always make",
+    "a comparison between two rivals",
+    "what almost nobody remembers anymore",
+    "a prediction about the near future",
+    "the untold origin story",
+    "the most expensive or valuable example",
+]
 YOUTUBE_ALTERED_CONTENT_YES_NAME = "VIDEO_HAS_ALTERED_CONTENT_YES"
 YOUTUBE_RADIO_BUTTON_XPATH = "//*[@id=\"radioLabel\"]"
 YOUTUBE_DONE_BUTTON_ID = "done-button"
