@@ -148,10 +148,10 @@ class Twitter:
         """
         if not os.path.exists(get_twitter_cache_path()):
             # Create the cache file
-            with open(get_twitter_cache_path(), "w") as file:
+            with open(get_twitter_cache_path(), "w", encoding="utf-8") as file:
                 json.dump({"accounts": []}, file, indent=4)
 
-        with open(get_twitter_cache_path(), "r") as file:
+        with open(get_twitter_cache_path(), "r", encoding="utf-8") as file:
             parsed = json.load(file)
 
             # Find our account
@@ -181,7 +181,7 @@ class Twitter:
         posts = self.get_posts()
         posts.append(post)
 
-        with open(get_twitter_cache_path(), "r") as file:
+        with open(get_twitter_cache_path(), "r", encoding="utf-8") as file:
             previous_json = json.loads(file.read())
 
             # Find our account
@@ -191,7 +191,7 @@ class Twitter:
                     account["posts"].append(post)
 
             # Commit changes
-            with open(get_twitter_cache_path(), "w") as f:
+            with open(get_twitter_cache_path(), "w", encoding="utf-8") as f:
                 f.write(json.dumps(previous_json))
 
     def generate_post(self) -> str:

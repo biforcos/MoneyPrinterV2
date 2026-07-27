@@ -155,7 +155,7 @@ class Outreach:
             list: The items from the file.
         """
         # Read and return items from a file
-        with open(file_name, "r", errors="ignore") as f:
+        with open(file_name, "r", errors="ignore", encoding="utf-8") as f:
             items = f.readlines()
             items = [item.strip() for item in items[1:]]
             return items
@@ -187,12 +187,12 @@ class Outreach:
 
         if email:
             print(f"=> Setting email {email} for website {website}")
-            with open(output_file, "r", newline="", errors="ignore") as csvfile:
+            with open(output_file, "r", newline="", errors="ignore", encoding="utf-8") as csvfile:
                 csvreader = csv.reader(csvfile)
                 items = list(csvreader)
                 items[index].append(email)
 
-            with open(output_file, "w", newline="", errors="ignore") as csvfile:
+            with open(output_file, "w", newline="", errors="ignore", encoding="utf-8") as csvfile:
                 csvwriter = csv.writer(csvfile)
                 csvwriter.writerows(items)
 
@@ -215,7 +215,7 @@ class Outreach:
         self.build_scraper()
 
         # Write the niche to a file
-        with open("niche.txt", "w") as f:
+        with open("niche.txt", "w", encoding="utf-8") as f:
             f.write(self.niche)
 
         output_path = get_results_cache_path()
@@ -274,7 +274,7 @@ class Outreach:
                         subject = message_subject.replace(
                             "{{COMPANY_NAME}}", company_name
                         )
-                        with open(message_body, "r") as f:
+                        with open(message_body, "r", encoding="utf-8") as f:
                             body = f.read().replace("{{COMPANY_NAME}}", company_name)
 
                         info(f" => Sending email to {receiver_email}...")

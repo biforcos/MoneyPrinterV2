@@ -681,7 +681,7 @@ class YouTube:
 
         cache = get_youtube_cache_path()
 
-        with open(cache, "r") as file:
+        with open(cache, "r", encoding="utf-8") as file:
             previous_json = json.loads(file.read())
 
             # Find our account
@@ -691,7 +691,7 @@ class YouTube:
                     account["videos"].append(video)
 
             # Commit changes
-            with open(cache, "w") as f:
+            with open(cache, "w", encoding="utf-8") as f:
                 f.write(json.dumps(previous_json))
 
     def generate_subtitles(self, audio_path: str) -> str:
@@ -1236,13 +1236,13 @@ class YouTube:
         """
         if not os.path.exists(get_youtube_cache_path()):
             # Create the cache file
-            with open(get_youtube_cache_path(), "w") as file:
+            with open(get_youtube_cache_path(), "w", encoding="utf-8") as file:
                 json.dump({"videos": []}, file, indent=4)
             return []
 
         videos = []
         # Read the cache file
-        with open(get_youtube_cache_path(), "r") as file:
+        with open(get_youtube_cache_path(), "r", encoding="utf-8") as file:
             previous_json = json.loads(file.read())
             # Find our account
             accounts = previous_json["accounts"]

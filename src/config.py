@@ -36,7 +36,7 @@ def get_email_credentials() -> dict:
     Returns:
         credentials (dict): The email credentials
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["email"]
 
 def get_verbose() -> bool:
@@ -46,7 +46,7 @@ def get_verbose() -> bool:
     Returns:
         verbose (bool): The verbose flag
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["verbose"]
 
 def get_firefox_profile_path() -> str:
@@ -56,7 +56,7 @@ def get_firefox_profile_path() -> str:
     Returns:
         path (str): The path to the Firefox profile
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["firefox_profile"]
 
 def get_headless() -> bool:
@@ -66,7 +66,7 @@ def get_headless() -> bool:
     Returns:
         headless (bool): The headless flag
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["headless"]
 
 def get_ollama_base_url() -> str:
@@ -76,7 +76,7 @@ def get_ollama_base_url() -> str:
     Returns:
         url (str): The Ollama base URL
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("ollama_base_url", "http://127.0.0.1:11434")
 
 def get_ollama_model() -> str:
@@ -86,7 +86,7 @@ def get_ollama_model() -> str:
     Returns:
         model (str): The Ollama model name, or empty string if not set.
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("ollama_model", "")
 
 def get_twitter_language() -> str:
@@ -96,7 +96,7 @@ def get_twitter_language() -> str:
     Returns:
         language (str): The Twitter language
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["twitter_language"]
 
 def get_nanobanana2_api_base_url() -> str:
@@ -106,7 +106,7 @@ def get_nanobanana2_api_base_url() -> str:
     Returns:
         url (str): API base URL
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get(
             "nanobanana2_api_base_url",
             "https://generativelanguage.googleapis.com/v1beta",
@@ -119,7 +119,7 @@ def get_nanobanana2_api_key() -> str:
     Returns:
         key (str): API key
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         configured = json.load(file).get("nanobanana2_api_key", "")
         return configured or os.environ.get("GEMINI_API_KEY", "")
 
@@ -130,7 +130,7 @@ def get_nanobanana2_model() -> str:
     Returns:
         model (str): Model name
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("nanobanana2_model", "gemini-3.1-flash-image-preview")
 
 def get_nanobanana2_aspect_ratio() -> str:
@@ -140,7 +140,7 @@ def get_nanobanana2_aspect_ratio() -> str:
     Returns:
         ratio (str): Aspect ratio
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("nanobanana2_aspect_ratio", "9:16")
 
 def get_threads() -> int:
@@ -150,7 +150,7 @@ def get_threads() -> int:
     Returns:
         threads (int): Amount of threads
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["threads"]
     
 def get_zip_url() -> str:
@@ -160,7 +160,7 @@ def get_zip_url() -> str:
     Returns:
         url (str): The URL to the zip file
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["zip_url"]
 
 def get_is_for_kids() -> bool:
@@ -170,7 +170,7 @@ def get_is_for_kids() -> bool:
     Returns:
         is_for_kids (bool): The is for kids flag
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["is_for_kids"]
 
 def get_google_maps_scraper_zip_url() -> str:
@@ -180,7 +180,7 @@ def get_google_maps_scraper_zip_url() -> str:
     Returns:
         url (str): The URL to the zip file
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["google_maps_scraper"]
 
 def get_google_maps_scraper_niche() -> str:
@@ -190,7 +190,7 @@ def get_google_maps_scraper_niche() -> str:
     Returns:
         niche (str): The niche
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["google_maps_scraper_niche"]
 
 def get_scraper_timeout() -> int:
@@ -200,7 +200,7 @@ def get_scraper_timeout() -> int:
     Returns:
         timeout (int): The timeout
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["scraper_timeout"] or 300
 
 def get_outreach_message_subject() -> str:
@@ -210,7 +210,7 @@ def get_outreach_message_subject() -> str:
     Returns:
         subject (str): The outreach message subject
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["outreach_message_subject"]
     
 def get_outreach_message_body_file() -> str:
@@ -220,7 +220,7 @@ def get_outreach_message_body_file() -> str:
     Returns:
         file (str): The outreach message body file
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["outreach_message_body_file"]
 
 def get_image_provider() -> str:
@@ -230,7 +230,7 @@ def get_image_provider() -> str:
     Returns:
         provider (str): "nanobanana2" (Gemini API) or "comfyui" (local FLUX/SD server)
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("image_provider", "nanobanana2")
 
 def get_comfyui_base_url() -> str:
@@ -240,7 +240,7 @@ def get_comfyui_base_url() -> str:
     Returns:
         url (str): The ComfyUI base URL
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("comfyui_base_url", "http://127.0.0.1:8188")
 
 def get_subscribe_cta() -> str:
@@ -260,7 +260,7 @@ def get_tts_provider() -> str:
     Returns:
         provider (str): "kitten" (local, English-only) or "edge" (Microsoft Edge neural voices)
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("tts_provider", "kitten")
 
 def get_tts_voice() -> str:
@@ -270,7 +270,7 @@ def get_tts_voice() -> str:
     Returns:
         voice (str): The TTS voice
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("tts_voice", "Jasper")
 
 def get_assemblyai_api_key() -> str:
@@ -280,7 +280,7 @@ def get_assemblyai_api_key() -> str:
     Returns:
         key (str): The AssemblyAI API key
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["assembly_ai_api_key"]
 
 def get_stt_provider() -> str:
@@ -290,7 +290,7 @@ def get_stt_provider() -> str:
     Returns:
         provider (str): The STT provider
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("stt_provider", "local_whisper")
 
 def get_whisper_model() -> str:
@@ -300,7 +300,7 @@ def get_whisper_model() -> str:
     Returns:
         model (str): Whisper model name
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("whisper_model", "base")
 
 def get_whisper_device() -> str:
@@ -310,7 +310,7 @@ def get_whisper_device() -> str:
     Returns:
         device (str): Whisper device
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("whisper_device", "auto")
 
 def get_whisper_compute_type() -> str:
@@ -320,7 +320,7 @@ def get_whisper_compute_type() -> str:
     Returns:
         compute_type (str): Whisper compute type
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("whisper_compute_type", "int8")
     
 def equalize_subtitles(srt_path: str, max_chars: int = 10) -> None:
@@ -343,7 +343,7 @@ def get_font() -> str:
     Returns:
         font (str): The font
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["font"]
 
 def get_fonts_dir() -> str:
@@ -362,7 +362,7 @@ def get_imagemagick_path() -> str:
     Returns:
         path (str): The path to ImageMagick
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file)["imagemagick_path"]
 
 def get_script_sentence_length() -> int:
@@ -373,7 +373,7 @@ def get_script_sentence_length() -> int:
     Returns:
         length (int): Length of script's sentence
     """
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         config_json = json.load(file)
         if (config_json.get("script_sentence_length") is not None):
             return config_json["script_sentence_length"]
@@ -396,7 +396,7 @@ def get_post_bridge_config() -> dict:
     }
     supported_platforms = {"tiktok", "instagram"}
 
-    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         config_json = json.load(file)
 
     raw_config = config_json.get("post_bridge", {})

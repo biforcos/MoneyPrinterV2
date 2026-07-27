@@ -8,5 +8,5 @@ def print_banner() -> None:
     Returns:
         None
     """
-    with open(f"{ROOT_DIR}/assets/banner.txt", "r") as file:
+    with open(f"{ROOT_DIR}/assets/banner.txt", "r", encoding="utf-8") as file:
         print(colored(file.read(), "green"))
