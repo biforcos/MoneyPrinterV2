@@ -223,6 +223,16 @@ def get_outreach_message_body_file() -> str:
     with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
         return json.load(file)["outreach_message_body_file"]
 
+def get_tts_provider() -> str:
+    """
+    Gets the TTS provider from the config file.
+
+    Returns:
+        provider (str): "kitten" (local, English-only) or "edge" (Microsoft Edge neural voices)
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r") as file:
+        return json.load(file).get("tts_provider", "kitten")
+
 def get_tts_voice() -> str:
     """
     Gets the TTS voice from the config file.

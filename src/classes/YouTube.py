@@ -3,6 +3,8 @@ import base64
 import json
 import time
 import os
+import shutil
+import traceback
 import requests
 import assemblyai as aai
 
@@ -17,19 +19,26 @@ from constants import *
 from typing import List
 from moviepy.editor import *
 from termcolor import colored
-from selenium_firefox import *
 from selenium import webdriver
 from moviepy.video.fx.all import crop
 from moviepy.config import change_settings
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
 from moviepy.video.tools.subtitles import SubtitlesClip
 from webdriver_manager.firefox import GeckoDriverManager
 from datetime import datetime
 
 # Set ImageMagick Path
 change_settings({"IMAGEMAGICK_BINARY": get_imagemagick_path()})
+
+# MoviePy 1.x uses Image.ANTIALIAS, removed in Pillow 10
+import PIL.Image
+
+if not hasattr(PIL.Image, "ANTIALIAS"):
+    PIL.Image.ANTIALIAS = PIL.Image.LANCZOS
 
 
 class YouTube:
@@ -204,14 +213,18 @@ class YouTube:
         Returns:
             metadata (dict): The generated metadata.
         """
-        title = self.generate_response(
-            f"Please generate a YouTube Video Title for the following subject, including hashtags: {self.subject}. Only return the title, nothing else. Limit the title under 100 characters."
-        )
-
-        if len(title) > 100:
+        title = ""
+        for _ in range(3):
+            title = self.generate_response(
+                f"Please generate a YouTube Video Title for the following subject, including hashtags: {self.subject}. Only return the title, nothing else. Limit the title under 100 characters."
+            )
+            if len(title) <= 100:
+                break
             if get_verbose():
                 warning("Generated Title is too long. Retrying...")
-            return self.generate_metadata()
+
+        if len(title) > 100:
+            title = title[:97].rstrip() + "..."
 
         description = self.generate_response(
             f"Please generate a YouTube Video Description for the following script: {self.script}. Only return the description, nothing else."
@@ -228,7 +241,8 @@ class YouTube:
         Returns:
             image_prompts (List[str]): Generated List of image prompts.
         """
-        n_prompts = len(self.script) / 3
+        # One image per script sentence, capped to keep image API usage low
+        n_prompts = min(get_script_sentence_length(), 6)
 
         prompt = f"""
         Generate {n_prompts} Image Prompts for AI Image Generation,
@@ -347,14 +361,31 @@ class YouTube:
         }
 
         try:
-            response = requests.post(
-                endpoint,
-                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
-                json=payload,
-                timeout=300,
-            )
-            response.raise_for_status()
-            body = response.json()
+            body = None
+            for attempt in range(3):
+                response = requests.post(
+                    endpoint,
+                    headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=300,
+                )
+                if response.status_code == 429:
+                    message = ""
+                    try:
+                        message = response.json()["error"]["message"]
+                    except Exception:
+                        pass
+                    # No point retrying when the account has no credits left
+                    if "depleted" in message.lower() or "billing" in message.lower():
+                        warning(f"Nano Banana 2 credits exhausted: {message}")
+                        return None
+                    if attempt < 2:
+                        warning("Nano Banana 2 rate limit hit, retrying in 15s...")
+                        time.sleep(15)
+                        continue
+                response.raise_for_status()
+                body = response.json()
+                break
 
             candidates = body.get("candidates", [])
             for candidate in candidates:
@@ -656,6 +687,11 @@ class YouTube:
         Returns:
             path (str): The path to the generated MP4 File.
         """
+        # Reset per-video state so a reused instance never mixes assets
+        # from a previous generation (whose temp files are already deleted)
+        self.images = []
+        self.image_prompts = []
+
         # Generate the Topic
         self.generate_topic()
 
@@ -672,6 +708,10 @@ class YouTube:
         for prompt in self.image_prompts:
             self.generate_image(prompt)
 
+        if not self.images:
+            error("No images were generated. Check your Nano Banana 2 API credits/quota.")
+            raise RuntimeError("Cannot build a video without images")
+
         # Generate the TTS
         self.generate_script_to_speech(tts_instance)
 
@@ -682,6 +722,13 @@ class YouTube:
             info(f" => Generated Video: {path}")
 
         self.video_path = os.path.abspath(path)
+
+        # Keep a permanent copy: .mp/ is wiped on every menu loop
+        videos_dir = os.path.join(ROOT_DIR, "videos")
+        os.makedirs(videos_dir, exist_ok=True)
+        keep_path = os.path.join(videos_dir, os.path.basename(path))
+        shutil.copy2(self.video_path, keep_path)
+        success(f'Saved a permanent copy to "{keep_path}"')
 
         return path
 
@@ -723,8 +770,11 @@ class YouTube:
             file_input = file_picker.find_element(By.TAG_NAME, INPUT_TAG)
             file_input.send_keys(self.video_path)
 
-            # Wait for upload to finish
-            time.sleep(5)
+            # Wait for the upload dialog to render its metadata textboxes
+            WebDriverWait(driver, 60).until(
+                lambda d: len(d.find_elements(By.ID, YOUTUBE_TEXTBOX_ID)) >= 2
+            )
+            time.sleep(2)
 
             # Set title
             textboxes = driver.find_elements(By.ID, YOUTUBE_TEXTBOX_ID)
@@ -737,7 +787,10 @@ class YouTube:
 
             title_el.click()
             time.sleep(1)
-            title_el.clear()
+            # .clear() sets innerHTML, which YouTube Studio's CSP blocks;
+            # clear via keyboard instead
+            title_el.send_keys(Keys.CONTROL, "a")
+            title_el.send_keys(Keys.DELETE)
             title_el.send_keys(self.metadata["title"])
 
             if verbose:
@@ -745,9 +798,17 @@ class YouTube:
 
             # Set description
             time.sleep(10)
-            description_el.click()
+            # Re-locate: typing the title can re-render the dialog, leaving
+            # the reference captured earlier stale. The hashtag-suggestion
+            # overlay may still cover the box, so click through it with JS.
+            WebDriverWait(driver, 30).until(
+                lambda d: len(d.find_elements(By.ID, YOUTUBE_TEXTBOX_ID)) >= 2
+            )
+            description_el = driver.find_elements(By.ID, YOUTUBE_TEXTBOX_ID)[-1]
+            driver.execute_script("arguments[0].scrollIntoView(); arguments[0].click();", description_el)
             time.sleep(0.5)
-            description_el.clear()
+            description_el.send_keys(Keys.CONTROL, "a")
+            description_el.send_keys(Keys.DELETE)
             description_el.send_keys(self.metadata["description"])
 
             time.sleep(0.5)
@@ -848,7 +909,8 @@ class YouTube:
             driver.quit()
 
             return True
-        except:
+        except Exception:
+            error(f"YouTube upload failed:\n{traceback.format_exc()}")
             self.browser.quit()
             return False
 

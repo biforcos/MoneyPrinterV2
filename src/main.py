@@ -74,7 +74,7 @@ def main():
             warning("No accounts found in cache. Create one now?")
             user_input = question("Yes/No: ")
 
-            if user_input.lower() == "yes":
+            if user_input.lower() in ("yes", "y"):
                 generated_uuid = str(uuid4())
 
                 success(f" => Generated ID: {generated_uuid}")
@@ -163,7 +163,7 @@ def main():
                     if user_input == 1:
                         youtube.generate_video(tts)
                         upload_to_yt = question("Do you want to upload this video to YouTube? (Yes/No): ")
-                        if upload_to_yt.lower() == "yes":
+                        if upload_to_yt.lower() in ("yes", "y"):
                             upload_success = youtube.upload_video()
                             if upload_success:
                                 maybe_crosspost_youtube_short(
@@ -231,7 +231,7 @@ def main():
             warning("No accounts found in cache. Create one now?")
             user_input = question("Yes/No: ")
 
-            if user_input.lower() == "yes":
+            if user_input.lower() in ("yes", "y"):
                 generated_uuid = str(uuid4())
 
                 success(f" => Generated ID: {generated_uuid}")
@@ -368,7 +368,7 @@ def main():
             warning("No products found in cache. Create one now?")
             user_input = question("Yes/No: ")
 
-            if user_input.lower() == "yes":
+            if user_input.lower() in ("yes", "y"):
                 affiliate_link = question(" => Enter the affiliate link: ")
                 twitter_uuid = question(" => Enter the Twitter Account UUID: ")
 

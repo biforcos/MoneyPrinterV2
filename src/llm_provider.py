@@ -1,3 +1,5 @@
+import re
+
 import ollama
 
 from config import get_ollama_base_url
@@ -55,9 +57,21 @@ def generate_text(prompt: str, model_name: str = None) -> str:
             "No Ollama model selected. Call select_model() first or pass model_name."
         )
 
-    response = _client().chat(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        response = _client().chat(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            think=False,
+        )
+    except ollama.ResponseError:
+        # Some models don't accept the think parameter
+        response = _client().chat(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
 
-    return response["message"]["content"].strip()
+    content = response["message"]["content"]
+    # Reasoning models may embed their chain of thought in the content
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
+
+    return content.strip()
