@@ -453,6 +453,15 @@ class YouTube:
         Be emotional and use interesting adjectives to make the
         Image Prompt as detailed as possible.
 
+        CRITICAL RULES FOR THE PROMPTS:
+        - NEVER depict or name specific characters, people or franchises.
+          Evoke the WORLD instead: environments, landscapes, objects,
+          atmosphere and mood that feel like the subject without showing
+          any recognizable character or logo.
+        - If a character matters, show them as a distant silhouette,
+          from behind, or represent them through an iconic object.
+        - The images must contain NO readable text, signs or logos.
+
         YOU MUST ONLY RETURN THE JSON-ARRAY OF STRINGS.
         YOU MUST NOT RETURN ANYTHING ELSE.
         YOU MUST NOT RETURN THE SCRIPT.
