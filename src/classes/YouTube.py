@@ -203,6 +203,21 @@ class YouTube:
 
         return picked
 
+    def _peek_queued_topic(self) -> str:
+        """
+        Returns the next pending topic from topics.txt without consuming it,
+        or None if the queue is missing or empty.
+        """
+        path = os.path.join(ROOT_DIR, "topics.txt")
+        if not os.path.exists(path):
+            return None
+        with open(path, "r", encoding="utf-8-sig") as f:
+            for line in f:
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    return stripped
+        return None
+
     def generate_topic(self) -> str:
         """
         Generates a topic: first from the user's topics.txt queue if it has
@@ -633,9 +648,9 @@ class YouTube:
         """
         path = os.path.join(ROOT_DIR, ".mp", str(uuid4()) + ".wav")
 
-        # End every video with the configured subscribe call-to-action so it
-        # gets spoken and picked up by the subtitles
-        cta = get_subscribe_cta().strip()
+        # End every video with the subscribe call-to-action (next-topic teaser
+        # when available) so it gets spoken and picked up by the subtitles
+        cta = (getattr(self, "cta", "") or get_subscribe_cta()).strip()
         if cta:
             self.script = f"{self.script.rstrip()} {cta}"
 
@@ -924,6 +939,29 @@ class YouTube:
 
         # Generate the Image Prompts
         self.generate_prompts()
+
+        # Build the closing CTA while the LLM is still loaded: tease the next
+        # queued topic when there is one, else fall back to the fixed CTA
+        self.cta = get_subscribe_cta().strip()
+        next_topic = self._peek_queued_topic()
+        if next_topic:
+            bell_hint = (
+                ' Refer to the notification bell as "la campanita".'
+                if "spanish" in str(self.language).lower()
+                else ""
+            )
+            teaser = generate_text(
+                "Write exactly one short, natural closing sentence for a video, "
+                f"in this language: {self.language}. It must invite viewers to "
+                "subscribe and hit the bell, teasing that the next video will "
+                f'be about: "{next_topic}". Only return the sentence, nothing else.'
+                + bell_hint,
+                temperature=0.9,
+            ).strip()
+            if teaser:
+                self.cta = teaser
+                if get_verbose():
+                    info(f" => CTA teaser for next topic: {teaser}")
 
         # With local image generation, free Ollama's VRAM first: the LLM and
         # the diffusion model don't fit together on a 12 GB GPU
