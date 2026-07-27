@@ -1171,26 +1171,38 @@ class YouTube:
             if verbose:
                 info("\t=> Getting video URL...")
 
-            # Get the latest uploaded video URL
-            driver.get(
-                f"https://studio.youtube.com/channel/{self.channel_id}/videos/short"
-            )
-            time.sleep(2)
-            videos = driver.find_elements(By.TAG_NAME, "ytcp-video-row")
-            first_video = videos[0]
-            anchor_tag = first_video.find_element(By.TAG_NAME, "a")
-            href = anchor_tag.get_attribute("href")
-            if verbose:
-                info(f"\t=> Extracting video ID from URL: {href}")
-            video_id = href.split("/")[-2]
-
-            # Build URL
-            url = build_url(video_id)
+            # Get the latest uploaded video URL. The video is already
+            # published at this point, so a failure here must not fail the
+            # upload — Studio can take a while to list a fresh video.
+            url = ""
+            try:
+                driver.get(
+                    f"https://studio.youtube.com/channel/{self.channel_id}/videos/short"
+                )
+                videos = []
+                for attempt in range(12):
+                    time.sleep(5)
+                    videos = driver.find_elements(By.TAG_NAME, "ytcp-video-row")
+                    if videos:
+                        break
+                    if attempt % 4 == 3:
+                        driver.refresh()
+                first_video = videos[0]
+                anchor_tag = first_video.find_element(By.TAG_NAME, "a")
+                href = anchor_tag.get_attribute("href")
+                if verbose:
+                    info(f"\t=> Extracting video ID from URL: {href}")
+                video_id = href.split("/")[-2]
+                url = build_url(video_id)
+            except Exception as url_err:
+                warning(
+                    f"Video was published, but its URL could not be retrieved: {url_err}"
+                )
 
             self.uploaded_video_url = url
 
             if verbose:
-                success(f" => Uploaded Video: {url}")
+                success(f" => Uploaded Video: {url or '(URL pending, check YouTube Studio)'}")
 
             # Add video to cache
             self.add_video(
