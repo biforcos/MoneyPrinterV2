@@ -142,6 +142,29 @@ class YouTube:
 
         return floor
 
+    @staticmethod
+    def _dismiss_popups(driver) -> bool:
+        """
+        Dismisses blocking confirmation popups Studio sometimes shows
+        (e.g. "Aún estamos comprobando tu contenido" -> "Entendido").
+
+        Returns:
+            dismissed (bool): True if a popup was dismissed.
+        """
+        dismissed = False
+        for label in ("Entendido", "Got it", "Aceptar", "OK"):
+            for el in driver.find_elements(
+                By.XPATH, f"//*[normalize-space(text())='{label}']"
+            ):
+                try:
+                    if el.is_displayed():
+                        driver.execute_script("arguments[0].click();", el)
+                        dismissed = True
+                        time.sleep(1)
+                except Exception:
+                    continue
+        return dismissed
+
     def _ensure_browser(self) -> webdriver.Firefox:
         """
         Returns a live browser, starting or restarting it if needed.
@@ -1426,23 +1449,43 @@ class YouTube:
                     "El botón de publicar/programar está deshabilitado: "
                     "YouTube está rechazando la subida (¿límite diario?)"
                 )
+            self._dismiss_popups(driver)
             driver.execute_script("arguments[0].click();", done_button)
 
             # Confirmation that YouTube accepted the upload: the dialog
             # either closes or switches to its share/confirmation panel
-            # (where the done button no longer exists)
-            WebDriverWait(driver, 120).until(
-                lambda d: (
-                    not any(
-                        el.is_displayed()
-                        for el in d.find_elements(By.TAG_NAME, "ytcp-uploads-dialog")
-                    )
-                    or not any(
-                        el.is_displayed()
-                        for el in d.find_elements(By.ID, YOUTUBE_DONE_BUTTON_ID)
-                    )
+            # (where the done button no longer exists). Meanwhile, dismiss
+            # any blocking popup ("Aún estamos comprobando tu contenido")
+            # that would otherwise hang the flow forever.
+            deadline = time.time() + 120
+            confirmed = False
+            while time.time() < deadline:
+                dialog_gone = not any(
+                    el.is_displayed()
+                    for el in driver.find_elements(By.TAG_NAME, "ytcp-uploads-dialog")
                 )
-            )
+                done_gone = not any(
+                    el.is_displayed()
+                    for el in driver.find_elements(By.ID, YOUTUBE_DONE_BUTTON_ID)
+                )
+                if dialog_gone or done_gone:
+                    confirmed = True
+                    break
+                if self._dismiss_popups(driver):
+                    # Popup dismissed; the done click may need repeating
+                    try:
+                        driver.execute_script(
+                            "arguments[0].click();", done_button
+                        )
+                    except Exception:
+                        pass
+                time.sleep(2)
+
+            if not confirmed:
+                raise RuntimeError(
+                    "YouTube no confirmó la publicación tras 120s "
+                    "(diálogo aún abierto)"
+                )
             time.sleep(2)
 
             # Get latest video
