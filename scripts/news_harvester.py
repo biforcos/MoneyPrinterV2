@@ -83,7 +83,7 @@ def collect_candidates(seen):
 
 def pick_stories(candidates, count):
     listing = "\n".join(
-        f"{i}. [{c['source']}] {c['title']} — {c['summary'][:200]}"
+        f"{i}. [{c['source']}] {c['title']} — {c['summary'][:300]}"
         for i, c in enumerate(candidates)
     )
     response = generate_text(
@@ -93,8 +93,11 @@ def pick_stories(candidates, count):
         "segundos: sorprendentes, concretas y explicables sin imágenes del "
         "juego. Descarta rumores sin sustancia, notas de prensa corporativas "
         "y finanzas. Devuelve SOLO un array JSON: "
-        '[{"index": <número de la lista>, "tema": "<frase gancho en español '
-        'para el vídeo>"}]. Nada más.\n\n' + listing,
+        '[{"index": <número de la lista>, "tema": "<frase gancho EN ESPAÑOL '
+        'para el vídeo>", "hechos": "<los hechos clave de la noticia '
+        "redactados EN ESPAÑOL, 2-4 frases con los datos concretos (fechas, "
+        'cifras, nombres); traduce si la noticia está en otro idioma>"}]. '
+        "Nada más.\n\n" + listing,
         temperature=0.7,
     )
     match = re.search(r"\[.*\]", response, re.DOTALL)
@@ -103,7 +106,13 @@ def pick_stories(candidates, count):
     for pick in picks[:count]:
         idx = pick.get("index")
         if isinstance(idx, int) and 0 <= idx < len(candidates) and pick.get("tema"):
-            valid.append((candidates[idx], pick["tema"].strip()))
+            candidate = candidates[idx]
+            # Facts always in Spanish; fall back to the raw feed text for
+            # Spanish-language sources if the model omitted them
+            hechos = (pick.get("hechos") or "").strip() or (
+                f"{candidate['title']}. {candidate['summary']}"
+            )
+            valid.append((candidate, pick["tema"].strip(), hechos))
     return valid
 
 
@@ -153,12 +162,10 @@ def main():
         return
 
     lines = []
-    for candidate, tema in picked:
-        contexto = (
-            f"{candidate['title']}. {candidate['summary']} "
-            f"(Fuente: {candidate['source']})"
+    for candidate, tema, hechos in picked:
+        lines.append(
+            f"{tema} || CONTEXTO: {hechos} (Fuente: {candidate['source']})"
         )
-        lines.append(f"{tema} || CONTEXTO: {contexto}")
         seen.append(candidate["link"])
         print(f"[news] Encolada: {tema}")
 
