@@ -385,6 +385,10 @@ class YouTube:
             flags=re.IGNORECASE,
         )
         text = re.sub(r"[*_`]", "", text)
+        # Models sometimes number the title ("1. ...") or split it across
+        # lines; a title is a single clean line
+        text = re.sub(r"^\d+\s*[.)]\s*", "", text)
+        text = " ".join(text.split())
         return text.strip().strip("\"'«»“”").strip()
 
     def generate_metadata(self) -> dict:
