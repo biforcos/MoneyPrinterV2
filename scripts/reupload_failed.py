@@ -12,6 +12,7 @@ import json
 import os
 import shutil
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -42,7 +43,10 @@ def main() -> None:
     select_model(get_ollama_model())
 
     recovered = 0
-    for video in pending:
+    for i, video in enumerate(pending):
+        if i > 0:
+            # Give the previous Firefox time to release the profile lock
+            time.sleep(10)
         path = os.path.join(ROOT, "videos", video["file"])
         if not os.path.exists(path):
             print(f"[reupload] No existe {video['file']}, lo salto.")

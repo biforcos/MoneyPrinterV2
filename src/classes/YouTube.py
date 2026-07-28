@@ -1428,12 +1428,19 @@ class YouTube:
                 )
             driver.execute_script("arguments[0].click();", done_button)
 
-            # The dialog actually closing is the only real confirmation
-            # that YouTube accepted the upload
-            WebDriverWait(driver, 60).until(
-                lambda d: not any(
-                    el.is_displayed()
-                    for el in d.find_elements(By.TAG_NAME, "ytcp-uploads-dialog")
+            # Confirmation that YouTube accepted the upload: the dialog
+            # either closes or switches to its share/confirmation panel
+            # (where the done button no longer exists)
+            WebDriverWait(driver, 120).until(
+                lambda d: (
+                    not any(
+                        el.is_displayed()
+                        for el in d.find_elements(By.TAG_NAME, "ytcp-uploads-dialog")
+                    )
+                    or not any(
+                        el.is_displayed()
+                        for el in d.find_elements(By.ID, YOUTUBE_DONE_BUTTON_ID)
+                    )
                 )
             )
             time.sleep(2)
