@@ -127,6 +127,17 @@ def prepend_topics(lines):
 
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Cosecha noticias gaming al topics.txt")
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=0,
+        help="cuántas noticias encolar (0 = usar news_per_day de la config)",
+    )
+    args = parser.parse_args()
+
     select_model(get_ollama_model())
     seen = load_seen()
 
@@ -136,7 +147,7 @@ def main():
         print("[news] Nada nuevo que cosechar.")
         return
 
-    picked = pick_stories(candidates, get_news_per_day())
+    picked = pick_stories(candidates, args.count or get_news_per_day())
     if not picked:
         print("[news] El redactor jefe no eligió ninguna.")
         return
