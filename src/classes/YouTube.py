@@ -288,9 +288,23 @@ class YouTube:
         history = self._load_topic_history()
         queued = self._pop_queued_topic()
 
+        # A queued topic may carry grounding facts after "||" (news items
+        # from the harvester, or hand-written): the script must then stick
+        # to those facts instead of the model's memory
+        self.topic_context = None
+        if queued and "||" in queued:
+            queued, _, raw_context = queued.partition("||")
+            queued = queued.strip()
+            context = re.sub(
+                r"^\s*CONTEXTO\s*:\s*", "", raw_context.strip(), flags=re.IGNORECASE
+            )
+            self.topic_context = context or None
+
         if queued:
             if get_verbose():
                 info(f" => Using queued topic: {queued}")
+                if self.topic_context:
+                    info(f" => Grounding context: {self.topic_context[:100]}...")
             prompt = (
                 "Generate a specific video idea based on this instruction from "
                 f'the channel owner: "{queued}". '
@@ -375,6 +389,15 @@ class YouTube:
         Subject: {self.subject}
         Language: {self.language}
         """
+        # News/context topics: force the script to stay inside the
+        # verified facts instead of the model's memory
+        if getattr(self, "topic_context", None):
+            prompt += (
+                "\n\nBASE THE SCRIPT EXCLUSIVELY ON THESE VERIFIED FACTS "
+                "(do not invent or add anything beyond them, but write it "
+                "as an exciting story):\n" + self.topic_context
+            )
+
         # Reasoning enabled here on purpose: the script is where writing
         # quality matters most and the extra minutes are local-only cost
         completion = generate_text(prompt, think=True)
@@ -452,6 +475,13 @@ class YouTube:
                 "Do not use markdown formatting or quotes. Only return the description, nothing else."
             )
         )
+
+        # News topics: credit the source in the description
+        context = getattr(self, "topic_context", None)
+        if context:
+            source_match = re.search(r"Fuente:\s*([^)|]+)", context)
+            if source_match:
+                description += f"\n\nFuente: {source_match.group(1).strip()}"
 
         self.metadata = {"title": title, "description": description}
 

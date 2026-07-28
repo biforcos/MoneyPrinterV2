@@ -254,6 +254,26 @@ def get_script_sentence_length_range() -> list:
     with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("script_sentence_length_range", [])
 
+def get_news_feeds() -> list:
+    """
+    Gets the RSS feeds harvested for news-driven topics.
+
+    Returns:
+        feeds (list): RSS feed URLs
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return json.load(file).get("news_feeds", [])
+
+def get_news_per_day() -> int:
+    """
+    Gets how many news topics the harvester may queue per run.
+
+    Returns:
+        count (int): Maximum news topics per harvest
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return json.load(file).get("news_per_day", 2)
+
 def get_summary_export_path() -> str:
     """
     Gets the optional extra destination for logs/last_run.json (e.g. a

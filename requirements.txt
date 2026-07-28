@@ -14,6 +14,7 @@ yagmail
 assemblyai
 faster-whisper
 edge-tts
+feedparser
 srt_equalizer
 undetected_chromedriver
 platformdirs
