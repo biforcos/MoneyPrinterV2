@@ -1296,10 +1296,18 @@ class YouTube:
                 By.NAME, YOUTUBE_NOT_MADE_FOR_KIDS_NAME
             )
 
+            # JS clicks throughout: native clicks fail whenever a scrim or
+            # overlay covers the dialog (transitions, promo popups)
             if not get_is_for_kids():
-                is_not_for_kids_checkbox.click()
+                driver.execute_script(
+                    "arguments[0].scrollIntoView(); arguments[0].click();",
+                    is_not_for_kids_checkbox,
+                )
             else:
-                is_for_kids_checkbox.click()
+                driver.execute_script(
+                    "arguments[0].scrollIntoView(); arguments[0].click();",
+                    is_for_kids_checkbox,
+                )
 
             time.sleep(0.5)
 
@@ -1327,13 +1335,13 @@ class YouTube:
                 info("\t=> Clicking next...")
 
             next_button = driver.find_element(By.ID, YOUTUBE_NEXT_BUTTON_ID)
-            next_button.click()
+            driver.execute_script("arguments[0].click();", next_button)
 
             # Click next again
             if verbose:
                 info("\t=> Clicking next again...")
             next_button = driver.find_element(By.ID, YOUTUBE_NEXT_BUTTON_ID)
-            next_button.click()
+            driver.execute_script("arguments[0].click();", next_button)
 
             # Wait for 2 seconds
             time.sleep(2)
@@ -1342,7 +1350,7 @@ class YouTube:
             if verbose:
                 info("\t=> Clicking next again...")
             next_button = driver.find_element(By.ID, YOUTUBE_NEXT_BUTTON_ID)
-            next_button.click()
+            driver.execute_script("arguments[0].click();", next_button)
 
             if get_publish_mode() == "schedule":
                 # Schedule for the next free daily slot instead of
@@ -1389,14 +1397,14 @@ class YouTube:
                     info("\t=> Setting as public...")
 
                 radio_button = driver.find_elements(By.XPATH, YOUTUBE_RADIO_BUTTON_XPATH)
-                radio_button[2].click()
+                driver.execute_script("arguments[0].click();", radio_button[2])
 
             if verbose:
                 info("\t=> Clicking done button...")
 
             # Click done button
             done_button = driver.find_element(By.ID, YOUTUBE_DONE_BUTTON_ID)
-            done_button.click()
+            driver.execute_script("arguments[0].click();", done_button)
 
             # Wait for 2 seconds
             time.sleep(2)
