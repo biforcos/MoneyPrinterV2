@@ -22,6 +22,14 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
+# Under the Task Scheduler stdout is cp1252 and the status emojis kill
+# every print; force UTF-8 with replacement so output can never crash us
+for stream in (sys.stdout, sys.stderr):
+    try:
+        stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import requests
 
 from datetime import datetime
