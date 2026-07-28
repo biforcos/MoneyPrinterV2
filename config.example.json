@@ -16,6 +16,8 @@
   "is_for_kids": false,
   "publish_mode": "public",
   "schedule_hours": [13, 20],
+  "news_per_day": 2,
+  "news_feeds": [],
   "google_maps_scraper": "https://github.com/gosom/google-maps-scraper/archive/refs/tags/v0.9.7.zip",
   "email": {
     "smtp_server": "smtp.gmail.com",
