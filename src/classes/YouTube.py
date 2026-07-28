@@ -1248,6 +1248,16 @@ class YouTube:
             )
             time.sleep(2)
 
+            # Fail fast when YouTube is refusing uploads: the dialog still
+            # lets you walk every step, but Done stays disabled at the end
+            page_text = driver.find_element(By.TAG_NAME, "body").text.lower()
+            if "límite diario" in page_text or "daily upload limit" in page_text:
+                raise RuntimeError(
+                    "YouTube: límite diario de subida alcanzado. Verifica el "
+                    "canal (youtube.com/features desde el perfil del bot) o "
+                    "espera 24h. El vídeo queda en videos/."
+                )
+
             # Set title
             textboxes = driver.find_elements(By.ID, YOUTUBE_TEXTBOX_ID)
 
@@ -1404,9 +1414,24 @@ class YouTube:
 
             # Click done button
             done_button = driver.find_element(By.ID, YOUTUBE_DONE_BUTTON_ID)
+            if (
+                done_button.get_attribute("disabled")
+                or done_button.get_attribute("aria-disabled") == "true"
+            ):
+                raise RuntimeError(
+                    "El botón de publicar/programar está deshabilitado: "
+                    "YouTube está rechazando la subida (¿límite diario?)"
+                )
             driver.execute_script("arguments[0].click();", done_button)
 
-            # Wait for 2 seconds
+            # The dialog actually closing is the only real confirmation
+            # that YouTube accepted the upload
+            WebDriverWait(driver, 60).until(
+                lambda d: not any(
+                    el.is_displayed()
+                    for el in d.find_elements(By.TAG_NAME, "ytcp-uploads-dialog")
+                )
+            )
             time.sleep(2)
 
             # Get latest video
