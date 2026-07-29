@@ -1419,7 +1419,11 @@ class YouTube:
             next_button = driver.find_element(By.ID, YOUTUBE_NEXT_BUTTON_ID)
             driver.execute_script("arguments[0].click();", next_button)
 
-            if get_publish_mode() == "schedule":
+            # News (context-grounded) videos skip the schedule queue: by the
+            # time the slot cascade reaches them the story is stale
+            is_news = bool(getattr(self, "topic_context", None))
+
+            if get_publish_mode() == "schedule" and not is_news:
                 # Schedule for the next free daily slot instead of
                 # publishing immediately
                 slot = self._next_schedule_slot()
@@ -1461,7 +1465,8 @@ class YouTube:
             else:
                 # Publish immediately as public
                 if verbose:
-                    info("\t=> Setting as public...")
+                    suffix = " (noticia: publicación inmediata)" if is_news else ""
+                    info(f"\t=> Setting as public...{suffix}")
 
                 radio_button = driver.find_elements(By.XPATH, YOUTUBE_RADIO_BUTTON_XPATH)
                 driver.execute_script("arguments[0].click();", radio_button[2])
