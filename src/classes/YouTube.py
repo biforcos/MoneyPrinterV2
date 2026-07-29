@@ -261,6 +261,22 @@ class YouTube:
 
         return picked
 
+    def _load_audience_insights(self) -> List[str]:
+        """
+        Returns the winning themes from the latest channel report
+        (scripts/channel_report.py), or [] if missing or older than 14 days.
+        """
+        path = os.path.join(ROOT_DIR, ".mp", "audience_insights.json")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            updated = datetime.fromisoformat(data.get("updated", "2000-01-01T00:00"))
+            if (datetime.now() - updated).days > 14:
+                return []
+            return [str(t) for t in data.get("temas_ganadores", [])][:5]
+        except Exception:
+            return []
+
     def _peek_queued_topic(self) -> str:
         """
         Returns the next pending topic from topics.txt without consuming it,
@@ -327,6 +343,13 @@ class YouTube:
                 prompt += (
                     "\nDo NOT repeat or rephrase any of these already covered topics:"
                     f"\n- {recent}"
+                )
+            insights = self._load_audience_insights()
+            if insights:
+                prompt += (
+                    "\nThe channel's audience has responded best to themes "
+                    f"like: {', '.join(insights)}. When it fits the angle, "
+                    "prefer ideas with similar appeal."
                 )
             completion = generate_text(prompt, temperature=1.15)
 

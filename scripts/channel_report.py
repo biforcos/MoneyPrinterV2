@@ -1,0 +1,164 @@
+"""Channel performance report + audience insights feedback loop.
+
+Reads every Short's stats from YouTube Studio (bot Firefox profile),
+prints a report, asks the LLM what is working, and stores the winning
+themes in .mp/audience_insights.json so topic generation can lean into
+what the audience responds to.
+
+Usage, from the project root (bot Firefox window must be closed):
+    python scripts/channel_report.py
+"""
+
+import json
+import os
+import re
+import sys
+import time
+from datetime import datetime
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "src"))
+
+for stream in (sys.stdout, sys.stderr):
+    try:
+        stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.firefox.options import Options
+from webdriver_manager.firefox import GeckoDriverManager
+
+from cache import get_accounts
+from config import get_ollama_model
+from llm_provider import select_model, generate_text
+
+INSIGHTS_PATH = os.path.join(ROOT, ".mp", "audience_insights.json")
+REPORT_PATH = os.path.join(ROOT, "logs", "channel_report.json")
+
+VISIBILITY_WORDS = ("Público", "Programado", "Privado", "Oculto", "Borrador")
+
+
+def parse_number(text):
+    text = text.strip().replace(" ", " ")
+    match = re.match(r"^([\d.,]+)\s*(mil|M)?$", text)
+    if not match:
+        return None
+    value = float(match.group(1).replace(".", "").replace(",", "."))
+    if match.group(2) == "mil":
+        value *= 1000
+    elif match.group(2) == "M":
+        value *= 1000000
+    return int(value)
+
+
+def scrape_shorts():
+    account = get_accounts("youtube")[0]
+    opts = Options()
+    opts.add_argument("--headless")
+    opts.add_argument("--width=1600")
+    opts.add_argument("--height=1200")
+    opts.add_argument("-profile")
+    opts.add_argument(account["firefox_profile"])
+    browser = webdriver.Firefox(
+        service=Service(GeckoDriverManager().install()), options=opts
+    )
+    videos = []
+    try:
+        browser.get("https://studio.youtube.com")
+        time.sleep(8)
+        channel_id = browser.current_url.split("/channel/")[-1].split("/")[0]
+        browser.get(
+            f"https://studio.youtube.com/channel/{channel_id}/videos/short"
+        )
+        rows = []
+        for _ in range(10):
+            time.sleep(5)
+            rows = browser.find_elements(By.TAG_NAME, "ytcp-video-row")
+            if rows:
+                break
+
+        for row in rows:
+            lines = [l.strip() for l in row.text.split("\n") if l.strip()]
+            if len(lines) < 2:
+                continue
+            entry = {"title": lines[1][:120]}
+            for line in lines:
+                if line in VISIBILITY_WORDS:
+                    entry["visibility"] = line
+                elif re.match(r"^\d{1,2} \w{3,4} \d{4}$", line):
+                    entry["date"] = line
+            numbers = [parse_number(l) for l in lines[3:]]
+            numbers = [n for n in numbers if n is not None]
+            if numbers:
+                entry["views"] = numbers[0]
+                entry["comments"] = numbers[-1] if len(numbers) > 1 else 0
+            videos.append(entry)
+    finally:
+        browser.quit()
+    return videos
+
+
+def main():
+    print("[report] Leyendo el canal en Studio...")
+    videos = scrape_shorts()
+    public = [v for v in videos if v.get("visibility") == "Público"]
+    scheduled = [v for v in videos if v.get("visibility") == "Programado"]
+
+    print(f"\n===== INFORME DEL CANAL ({datetime.now():%d/%m/%Y %H:%M}) =====")
+    print(f"Shorts públicos: {len(public)} | Programados: {len(scheduled)}")
+    for v in sorted(public, key=lambda x: -(x.get("views") or 0)):
+        print(
+            f"  {v.get('views', '?'):>6} vistas | {v.get('comments', 0):>3} comentarios"
+            f" | {v.get('date', '?'):>12} | {v['title'][:70]}"
+        )
+
+    os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
+    with open(REPORT_PATH, "w", encoding="utf-8") as fh:
+        json.dump(
+            {"generated": datetime.now().isoformat(timespec="minutes"), "videos": videos},
+            fh,
+            ensure_ascii=False,
+            indent=2,
+        )
+
+    if len(public) < 3:
+        print("[report] Aún pocos vídeos públicos para extraer patrones.")
+        return
+
+    select_model(get_ollama_model())
+    table = "\n".join(
+        f"- {v.get('views', 0)} vistas, {v.get('comments', 0)} comentarios "
+        f"({v.get('date', '?')}): {v['title']}"
+        for v in public
+    )
+    analysis = generate_text(
+        "Eres el analista de un canal de YouTube Shorts español de videojuegos. "
+        "Con estos datos de rendimiento por vídeo, responde EN ESPAÑOL:\n"
+        "1) Qué patrones separan los vídeos con más vistas de los demás "
+        "(tema, formato del título, franquicia).\n"
+        "2) Tres recomendaciones concretas de contenido.\n"
+        "3) Una lista JSON al final con este formato exacto: "
+        '{"temas_ganadores": ["...", "..."]} con 3-5 temáticas a potenciar.\n\n'
+        + table,
+        think=True,
+    )
+    print("\n===== ANÁLISIS DEL LLM =====")
+    print(analysis)
+
+    match = re.search(r'\{\s*"temas_ganadores"\s*:\s*\[.*?\]\s*\}', analysis, re.DOTALL)
+    if match:
+        try:
+            insights = json.loads(match.group(0))
+            insights["updated"] = datetime.now().isoformat(timespec="minutes")
+            with open(INSIGHTS_PATH, "w", encoding="utf-8") as fh:
+                json.dump(insights, fh, ensure_ascii=False, indent=2)
+            print(f"\n[report] Temas ganadores guardados en {INSIGHTS_PATH}")
+        except Exception as e:
+            print(f"[report] No se pudieron guardar los insights: {e}")
+
+
+if __name__ == "__main__":
+    main()
