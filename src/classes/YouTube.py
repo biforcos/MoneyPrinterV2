@@ -6,6 +6,7 @@ import os
 import random
 import shutil
 import srt as srt_lib
+import subprocess
 import traceback
 import requests
 import assemblyai as aai
@@ -393,6 +394,10 @@ class YouTube:
         STICK TO WELL-KNOWN, VERIFIABLE FACTS. NEVER invent specific numbers,
         dates, names or events you are not sure about — vague but true beats
         precise but false.
+
+        Use punctuation to shape the narrator's rhythm: strategic commas, and
+        an occasional ellipsis (...) right before a reveal or surprising fact,
+        so the voice pauses dramatically. One or two ellipses per script, max.
 
         THE FIRST SENTENCE MUST BE A POWERFUL HOOK: a surprising fact, a bold claim
         or an intriguing question directly about the subject, so the viewer stays.
@@ -1174,14 +1179,61 @@ class YouTube:
         final_clip = final_clip.set_audio(comp_audio)
         final_clip = final_clip.set_duration(tts_clip.duration)
 
+        layers = [final_clip]
+
+        # Burned-in opening title (hashtags stripped): anchors the topic
+        # visually and improves the frame YouTube samples for the grid
+        opening_title = (
+            re.sub(r"#\S+", "", getattr(self, "metadata", {}).get("title", ""))
+            .strip()
+            .rstrip(" .-:")
+        )
+        if opening_title:
+            title_clip = TextClip(
+                opening_title.upper(),
+                font=subtitle_font,
+                fontsize=92,
+                color="white",
+                stroke_color="black",
+                stroke_width=4,
+                size=(950, None),
+                method="caption",
+            )
+            layers.append(
+                title_clip.set_position(("center", 0.16), relative=True)
+                .set_start(0)
+                .set_duration(min(2.4, max_duration))
+                .crossfadeout(0.4)
+            )
+
         if subtitles is not None:
             # Below-center keeps faces/subjects visible; relative so it
             # holds for any resolution
-            final_clip = CompositeVideoClip(
-                [final_clip, subtitles.set_position(("center", 0.63), relative=True)]
-            )
+            layers.append(subtitles.set_position(("center", 0.63), relative=True))
 
-        final_clip.write_videofile(combined_image_path, threads=threads)
+        if len(layers) > 1:
+            final_clip = CompositeVideoClip(layers)
+
+        raw_path = combined_image_path + ".raw.mp4"
+        final_clip.write_videofile(raw_path, threads=threads)
+
+        # Normalize loudness to YouTube's -14 LUFS reference so every
+        # video plays at the same professional level
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-loglevel", "error",
+                    "-i", raw_path,
+                    "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                    combined_image_path,
+                ],
+                check=True,
+            )
+            os.remove(raw_path)
+        except Exception as e:
+            warning(f"Loudness normalization failed, keeping raw audio: {e}")
+            shutil.move(raw_path, combined_image_path)
 
         success(f'Wrote Video to "{combined_image_path}"')
 
