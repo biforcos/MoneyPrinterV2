@@ -36,6 +36,8 @@
   "assembly_ai_api_key": "",
   "tts_provider": "kitten",
   "tts_voice": "Jasper",
+  "tts_voice_b": "",
+  "dialogue_ratio": 0.0,
   "font": "bold_font.ttf",
   "imagemagick_path": "Path to magick.exe or on linux/macOS just /usr/bin/convert",
   "script_sentence_length": 4,

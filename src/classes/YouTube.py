@@ -376,6 +376,14 @@ class YouTube:
             sentence_length = random.randint(length_range[0], length_range[1])
         else:
             sentence_length = get_script_sentence_length()
+
+        # Some videos come out as a two-host dialogue (needs the edge
+        # provider and a second voice configured)
+        self._dialogue = (
+            get_tts_provider() == "edge"
+            and bool(get_tts_voice_b())
+            and random.random() < get_dialogue_ratio()
+        )
         # Remembered so generate_prompts derives the image count from the
         # actual length of this video
         self._sentence_length = sentence_length
@@ -417,6 +425,19 @@ class YouTube:
         Subject: {self.subject}
         Language: {self.language}
         """
+        if self._dialogue:
+            prompt += """
+
+        WRITE THE SCRIPT AS A LIVELY DIALOGUE BETWEEN TWO HOSTS.
+        Prefix every sentence with "A: " or "B: ", alternating naturally
+        (A speaks first). A is curious, asks and reacts with energy; B knows
+        the facts and reveals them. Keep every line short and punchy. All the
+        other rules (hook first line, loop-back last line, sentence limit)
+        still apply to the dialogue as a whole.
+        """
+            if get_verbose():
+                info(" => Formato: diálogo a dos voces")
+
         # News/context topics: force the script to stay inside the
         # verified facts instead of the model's memory
         if getattr(self, "topic_context", None):
@@ -493,9 +514,12 @@ class YouTube:
             # Cut on a word boundary and drop any half-written hashtag
             title = title[:97].rsplit(" ", 1)[0].rstrip("#").rstrip() + "..."
 
+        plain_script = re.sub(
+            r"^\s*[AB]\s*[:.\-]\s*", "", self.script, flags=re.MULTILINE
+        )
         description = self._clean_metadata_text(
             self.generate_response(
-                f"Please generate a YouTube Video Description for the following script: {self.script}. "
+                f"Please generate a YouTube Video Description for the following script: {plain_script}. "
                 "It must have: a short engaging summary (2 sentences max), then one short "
                 "question inviting viewers to answer in the comments, and end with 2-3 "
                 "relevant hashtags on the last line. "
@@ -837,6 +861,19 @@ class YouTube:
             return self.generate_image_comfyui(prompt)
         return self.generate_image_nanobanana2(prompt)
 
+    @staticmethod
+    def _parse_dialogue(script: str):
+        """
+        Parses "A: ..." / "B: ..." dialogue lines. Returns a list of
+        (speaker, text) tuples, or None if the script isn't a dialogue.
+        """
+        segments = []
+        for raw_line in script.splitlines():
+            match = re.match(r"^\s*([AB])\s*[:.\-]\s*(.+)$", raw_line.strip())
+            if match:
+                segments.append((match.group(1), match.group(2).strip()))
+        return segments if len(segments) >= 2 else None
+
     def generate_script_to_speech(self, tts_instance: TTS) -> str:
         """
         Converts the generated script into Speech using KittenTTS and returns the path to the wav file.
@@ -852,13 +889,34 @@ class YouTube:
         # End every video with the subscribe call-to-action (next-topic teaser
         # when available) so it gets spoken and picked up by the subtitles
         cta = (getattr(self, "cta", "") or get_subscribe_cta()).strip()
-        if cta:
-            self.script = f"{self.script.rstrip()} {cta}"
 
-        # Clean script, remove every character that is not a word character, a space, a period, a question mark, or an exclamation mark.
-        self.script = re.sub(r"[^\w\s.?!]", "", self.script)
+        def clean(text):
+            # Keep commas/ellipses (narration pauses) and Spanish ¿¡
+            return re.sub(r"[^\w\s.,?!¿¡]", "", text)
 
-        tts_instance.synthesize(self.script, path)
+        segments = (
+            self._parse_dialogue(self.script)
+            if getattr(self, "_dialogue", False)
+            else None
+        )
+
+        if segments and get_tts_provider() == "edge" and get_tts_voice_b():
+            if cta:
+                last_speaker = segments[-1][0]
+                segments.append(("B" if last_speaker == "A" else "A", cta))
+            voices = {"A": get_tts_voice(), "B": get_tts_voice_b()}
+            voiced = [(voices[s], clean(t)) for s, t in segments]
+            self.script = " ".join(text for _, text in voiced)
+            tts_instance.synthesize_dialogue(voiced, path)
+        else:
+            # Strip stray dialogue tags if the model added them anyway
+            self.script = re.sub(
+                r"^\s*[AB]\s*[:.\-]\s*", "", self.script, flags=re.MULTILINE
+            )
+            if cta:
+                self.script = f"{self.script.rstrip()} {cta}"
+            self.script = clean(self.script)
+            tts_instance.synthesize(self.script, path)
 
         self.tts_path = path
 

@@ -306,6 +306,26 @@ def get_schedule_hours() -> list:
     with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("schedule_hours", [13, 20])
 
+def get_tts_voice_b() -> str:
+    """
+    Gets the second TTS voice used for dialogue-format videos.
+
+    Returns:
+        voice (str): The co-host voice, or empty string to disable dialogues
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return json.load(file).get("tts_voice_b", "")
+
+def get_dialogue_ratio() -> float:
+    """
+    Gets the fraction of videos generated as a two-host dialogue.
+
+    Returns:
+        ratio (float): 0.0 (never) to 1.0 (always)
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return float(json.load(file).get("dialogue_ratio", 0.0))
+
 def get_subscribe_cta() -> str:
     """
     Gets the call-to-action sentence appended to every video script.

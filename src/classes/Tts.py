@@ -27,6 +27,44 @@ class TTS:
         sf.write(output_file, audio, KITTEN_SAMPLE_RATE)
         return output_file
 
+    def synthesize_dialogue(self, segments, output_file):
+        """
+        Synthesizes a two-host dialogue: each segment is (voice_name, text).
+        Only supported with the edge provider; concatenates per-segment
+        audio with ffmpeg.
+        """
+        import edge_tts
+
+        rate = f"+{random.randint(4, 8)}%"
+        part_files = []
+        try:
+            for i, (voice, text) in enumerate(segments):
+                part = f"{output_file}.seg{i}.mp3"
+                communicate = edge_tts.Communicate(text, voice, rate=rate)
+                asyncio.run(communicate.save(part))
+                part_files.append(part)
+
+            list_file = output_file + ".list.txt"
+            with open(list_file, "w", encoding="utf-8") as f:
+                for part in part_files:
+                    escaped = os.path.abspath(part).replace("'", "'\\''")
+                    f.write(f"file '{escaped}'\n")
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-loglevel", "error",
+                    "-f", "concat", "-safe", "0", "-i", list_file,
+                    "-ar", "44100", output_file,
+                ],
+                check=True,
+            )
+        finally:
+            for part in part_files:
+                if os.path.exists(part):
+                    os.remove(part)
+            if os.path.exists(output_file + ".list.txt"):
+                os.remove(output_file + ".list.txt")
+        return output_file
+
     def _synthesize_edge(self, text, output_file):
         import edge_tts
 
