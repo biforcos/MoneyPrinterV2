@@ -9,6 +9,8 @@ from config import ROOT_DIR, get_tts_provider, get_tts_voice
 
 KITTEN_MODEL = "KittenML/kitten-tts-mini-0.8"
 KITTEN_SAMPLE_RATE = 24000
+KOKORO_MODEL = os.path.join(ROOT_DIR, "models", "kokoro-v1.0.onnx")
+KOKORO_VOICES = os.path.join(ROOT_DIR, "models", "voices-v1.0.bin")
 
 class TTS:
     def __init__(self) -> None:
@@ -18,10 +20,26 @@ class TTS:
             from kittentts import KittenTTS as KittenModel
 
             self._model = KittenModel(KITTEN_MODEL)
+        elif self._provider == "kokoro":
+            from kokoro_onnx import Kokoro
+
+            self._kokoro = Kokoro(KOKORO_MODEL, KOKORO_VOICES)
+
+    @staticmethod
+    def _kokoro_lang(voice: str) -> str:
+        # Kokoro voice ids encode the language in the first letter
+        return {"e": "es", "a": "en-us", "b": "en-gb"}.get(voice[:1], "es")
 
     def synthesize(self, text, output_file=os.path.join(ROOT_DIR, ".mp", "audio.wav")):
         if self._provider == "edge":
             return self._synthesize_edge(text, output_file)
+
+        if self._provider == "kokoro":
+            samples, rate = self._kokoro.create(
+                text, voice=self._voice, speed=1.05, lang=self._kokoro_lang(self._voice)
+            )
+            sf.write(output_file, samples, rate)
+            return output_file
 
         audio = self._model.generate(text, voice=self._voice)
         sf.write(output_file, audio, KITTEN_SAMPLE_RATE)
@@ -30,9 +48,23 @@ class TTS:
     def synthesize_dialogue(self, segments, output_file):
         """
         Synthesizes a two-host dialogue: each segment is (voice_name, text).
-        Only supported with the edge provider; concatenates per-segment
-        audio with ffmpeg.
+        Supported with the edge provider (ffmpeg concat) and kokoro
+        (sample-level concat with short gaps).
         """
+        if self._provider == "kokoro":
+            import numpy as np
+
+            chunks = []
+            rate = 24000
+            for voice, text in segments:
+                samples, rate = self._kokoro.create(
+                    text, voice=voice, speed=1.05, lang=self._kokoro_lang(voice)
+                )
+                chunks.append(samples)
+                chunks.append(np.zeros(int(rate * 0.25), dtype=samples.dtype))
+            sf.write(output_file, np.concatenate(chunks), rate)
+            return output_file
+
         import edge_tts
 
         rate = f"+{random.randint(4, 8)}%"

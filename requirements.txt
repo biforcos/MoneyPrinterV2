@@ -18,3 +18,4 @@ feedparser
 srt_equalizer
 undetected_chromedriver
 platformdirs
+kokoro-onnx

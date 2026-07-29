@@ -380,7 +380,7 @@ class YouTube:
         # Some videos come out as a two-host dialogue (needs the edge
         # provider and a second voice configured)
         self._dialogue = (
-            get_tts_provider() == "edge"
+            get_tts_provider() in ("edge", "kokoro")
             and bool(get_tts_voice_b())
             and random.random() < get_dialogue_ratio()
         )
@@ -900,7 +900,7 @@ class YouTube:
             else None
         )
 
-        if segments and get_tts_provider() == "edge" and get_tts_voice_b():
+        if segments and get_tts_provider() in ("edge", "kokoro") and get_tts_voice_b():
             if cta:
                 last_speaker = segments[-1][0]
                 segments.append(("B" if last_speaker == "A" else "A", cta))
