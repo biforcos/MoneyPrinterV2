@@ -162,6 +162,7 @@ def main() -> None:
                     topic=getattr(youtube, "subject", ""),
                     title=youtube.metadata.get("title", ""),
                     file=os.path.basename(youtube.video_path),
+                    news=bool(getattr(youtube, "topic_context", None)),
                     status="generated",
                 )
 

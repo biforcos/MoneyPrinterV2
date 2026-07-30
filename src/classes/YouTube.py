@@ -1625,7 +1625,8 @@ class YouTube:
             # (where the done button no longer exists). Meanwhile, dismiss
             # any blocking popup ("Aún estamos comprobando tu contenido")
             # that would otherwise hang the flow forever.
-            deadline = time.time() + 120
+            # Studio's content checks can take several minutes at night
+            deadline = time.time() + 300
             confirmed = False
             while time.time() < deadline:
                 dialog_gone = not any(
@@ -1663,7 +1664,7 @@ class YouTube:
                 except Exception:
                     pass
                 raise RuntimeError(
-                    "YouTube no confirmó la publicación tras 120s "
+                    "YouTube no confirmó la publicación tras 300s "
                     "(diálogo aún abierto)"
                 )
             time.sleep(2)

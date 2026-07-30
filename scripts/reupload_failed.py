@@ -70,6 +70,9 @@ def main() -> None:
         )
         youtube.metadata = {"title": video["title"], "description": description}
         youtube.video_path = os.path.abspath(path)
+        if video.get("news"):
+            # Preserve news-ness: publish immediately instead of queueing
+            youtube.topic_context = "reupload-news"
 
         if youtube.upload_video():
             recovered += 1
