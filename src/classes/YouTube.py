@@ -1650,6 +1650,18 @@ class YouTube:
                 time.sleep(2)
 
             if not confirmed:
+                # Leave visual evidence of what blocked the dialog
+                try:
+                    os.makedirs(os.path.join(ROOT_DIR, "logs"), exist_ok=True)
+                    shot = os.path.join(
+                        ROOT_DIR,
+                        "logs",
+                        f"upload_timeout_{datetime.now():%Y%m%d_%H%M%S}.png",
+                    )
+                    driver.save_screenshot(shot)
+                    warning(f"Captura del bloqueo guardada en {shot}")
+                except Exception:
+                    pass
                 raise RuntimeError(
                     "YouTube no confirmó la publicación tras 120s "
                     "(diálogo aún abierto)"
