@@ -238,29 +238,53 @@ class YouTube:
     NEWS_MAX_AGE_HOURS = 20
 
     @classmethod
-    def _is_expired_news(cls, line: str) -> bool:
+    def _news_expired(cls, item: dict) -> bool:
         """
-        News lines carry a "|| FECHA: <iso>" harvest stamp; past
-        NEWS_MAX_AGE_HOURS they are stale and must be discarded, because
-        an old news video is worse than no video.
+        News items carry their harvest timestamp; past NEWS_MAX_AGE_HOURS
+        they are stale and must be discarded — an old news video is worse
+        than no video.
         """
-        match = re.search(r"\|\|\s*FECHA\s*:\s*([0-9T:\-]+)", line)
-        if not match:
-            return False
         try:
-            harvested = datetime.fromisoformat(match.group(1))
-        except ValueError:
+            harvested = datetime.fromisoformat(item.get("fecha", ""))
+        except (TypeError, ValueError):
             return False
         return (datetime.now() - harvested) > timedelta(
             hours=cls.NEWS_MAX_AGE_HOURS
         )
 
+    def _pop_queued_news(self) -> dict:
+        """
+        Takes (and removes) the first fresh item from news_queue.json, the
+        harvester-managed news queue. Expired items are purged on the way.
+        Returns None when there is nothing fresh.
+        """
+        path = os.path.join(ROOT_DIR, "news_queue.json")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                queue = json.load(f)
+        except Exception:
+            return None
+
+        picked, fresh = None, []
+        for item in queue:
+            if self._news_expired(item):
+                warning(f"Noticia caducada, descartada: {item.get('tema', '')[:70]}")
+                continue
+            if picked is None:
+                picked = item
+            else:
+                fresh.append(item)
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(fresh, f, ensure_ascii=False, indent=1)
+
+        return picked
+
     def _pop_queued_topic(self) -> str:
         """
-        Takes (and removes) the first pending topic from topics.txt, a
-        user-maintained queue at the project root. Expired news lines are
-        dropped on the way. Returns None when the file is missing or has
-        no pending entries.
+        Takes (and removes) the first pending topic from topics.txt, the
+        user-maintained evergreen queue. Returns None when the file is
+        missing or has no pending entries.
         """
         path = os.path.join(ROOT_DIR, "topics.txt")
         if not os.path.exists(path):
@@ -273,14 +297,11 @@ class YouTube:
         for line in lines:
             stripped = line.strip()
             if picked is None and stripped and not stripped.startswith("#"):
-                if self._is_expired_news(stripped):
-                    warning(f"Noticia caducada, descartada: {stripped[:70]}")
-                    continue
                 picked = stripped
                 continue
             remaining.append(line)
 
-        if picked is not None or len(remaining) != len(lines):
+        if picked is not None:
             with open(path, "w", encoding="utf-8") as f:
                 f.writelines(remaining)
 
@@ -307,18 +328,25 @@ class YouTube:
         Returns the next pending topic from topics.txt without consuming it,
         or None if the queue is missing or empty.
         """
+        # Same order as consumption: fresh news first, then evergreen
+        try:
+            with open(
+                os.path.join(ROOT_DIR, "news_queue.json"), "r", encoding="utf-8"
+            ) as f:
+                for item in json.load(f):
+                    if not self._news_expired(item) and item.get("tema"):
+                        return item["tema"]
+        except Exception:
+            pass
+
         path = os.path.join(ROOT_DIR, "topics.txt")
         if not os.path.exists(path):
             return None
         with open(path, "r", encoding="utf-8-sig") as f:
             for line in f:
                 stripped = line.strip()
-                if (
-                    stripped
-                    and not stripped.startswith("#")
-                    and not self._is_expired_news(stripped)
-                ):
-                    # Only the topic itself: context/date stay out of teasers
+                if stripped and not stripped.startswith("#"):
+                    # Only the topic itself: context stays out of teasers
                     return stripped.split("||")[0].strip()
         return None
 
@@ -332,20 +360,28 @@ class YouTube:
             topic (str): The generated topic.
         """
         history = self._load_topic_history()
-        queued = self._pop_queued_topic()
-
-        # A queued topic may carry grounding facts after "||" (news items
-        # from the harvester, or hand-written): the script must then stick
-        # to those facts instead of the model's memory
         self.topic_context = None
-        if queued and "||" in queued:
-            parts = [p.strip() for p in queued.split("||")]
-            queued = parts[0]
-            for part in parts[1:]:
-                if re.match(r"(?i)^CONTEXTO\s*:", part):
-                    self.topic_context = (
-                        re.sub(r"(?i)^CONTEXTO\s*:\s*", "", part) or None
-                    )
+        # Only queue-sourced news skip the schedule; hand-grounded
+        # evergreen topics keep their slot in the cascade
+        self._news_immediate = False
+
+        news_item = self._pop_queued_news()
+        if news_item:
+            queued = news_item.get("tema", "").strip()
+            self.topic_context = news_item.get("contexto") or None
+            self._news_immediate = True
+        else:
+            queued = self._pop_queued_topic()
+            # A hand-written topic may carry grounding facts after "||":
+            # the script must then stick to those facts
+            if queued and "||" in queued:
+                parts = [p.strip() for p in queued.split("||")]
+                queued = parts[0]
+                for part in parts[1:]:
+                    if re.match(r"(?i)^CONTEXTO\s*:", part):
+                        self.topic_context = (
+                            re.sub(r"(?i)^CONTEXTO\s*:\s*", "", part) or None
+                        )
 
         if queued:
             if get_verbose():
@@ -1582,9 +1618,9 @@ class YouTube:
             next_button = driver.find_element(By.ID, YOUTUBE_NEXT_BUTTON_ID)
             driver.execute_script("arguments[0].click();", next_button)
 
-            # News (context-grounded) videos skip the schedule queue: by the
-            # time the slot cascade reaches them the story is stale
-            is_news = bool(getattr(self, "topic_context", None))
+            # News-queue videos skip the schedule: by the time the slot
+            # cascade reaches them the story is stale
+            is_news = bool(getattr(self, "_news_immediate", False))
 
             if get_publish_mode() == "schedule" and not is_news:
                 # Schedule for the next free daily slot instead of

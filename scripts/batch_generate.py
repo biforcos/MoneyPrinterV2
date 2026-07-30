@@ -147,13 +147,22 @@ def main() -> None:
     results = []
 
     def next_pending_is_news():
+        from datetime import timedelta
+
         try:
-            with open(os.path.join(ROOT, "topics.txt"), encoding="utf-8-sig") as fh:
-                for line in fh:
-                    stripped = line.strip()
-                    if stripped and not stripped.startswith("#"):
-                        return "CONTEXTO" in stripped
-        except FileNotFoundError:
+            with open(
+                os.path.join(ROOT, "news_queue.json"), encoding="utf-8"
+            ) as fh:
+                for item in json.load(fh):
+                    try:
+                        age = datetime.now() - datetime.fromisoformat(
+                            item.get("fecha", "")
+                        )
+                    except (TypeError, ValueError):
+                        continue
+                    if age <= timedelta(hours=20):
+                        return True
+        except Exception:
             pass
         return False
 
@@ -181,7 +190,7 @@ def main() -> None:
                     topic=getattr(youtube, "subject", ""),
                     title=youtube.metadata.get("title", ""),
                     file=os.path.basename(youtube.video_path),
-                    news=bool(getattr(youtube, "topic_context", None)),
+                    news=bool(getattr(youtube, "_news_immediate", False)),
                     status="generated",
                 )
 

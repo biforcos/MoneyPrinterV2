@@ -32,7 +32,7 @@ from config import get_news_feeds, get_news_per_day, get_ollama_model
 from llm_provider import select_model, generate_text
 
 SEEN_PATH = os.path.join(ROOT, ".mp", "news_seen.json")
-TOPICS_PATH = os.path.join(ROOT, "topics.txt")
+QUEUE_PATH = os.path.join(ROOT, "news_queue.json")
 MAX_AGE_HOURS = 36
 MAX_CANDIDATES = 40
 
@@ -116,23 +116,15 @@ def pick_stories(candidates, count):
     return valid
 
 
-def prepend_topics(lines):
-    existing = []
-    if os.path.exists(TOPICS_PATH):
-        with open(TOPICS_PATH, "r", encoding="utf-8-sig") as fh:
-            existing = fh.readlines()
-
-    # Keep the leading comment block on top, news right after it
-    head = []
-    rest = list(existing)
-    while rest and (rest[0].strip().startswith("#") or not rest[0].strip()):
-        head.append(rest.pop(0))
-
-    with open(TOPICS_PATH, "w", encoding="utf-8") as fh:
-        fh.writelines(head)
-        for line in lines:
-            fh.write(line + "\n")
-        fh.writelines(rest)
+def queue_news(items):
+    try:
+        with open(QUEUE_PATH, "r", encoding="utf-8") as fh:
+            queue = json.load(fh)
+    except Exception:
+        queue = []
+    queue.extend(items)
+    with open(QUEUE_PATH, "w", encoding="utf-8") as fh:
+        json.dump(queue, fh, ensure_ascii=False, indent=1)
 
 
 def main():
@@ -164,19 +156,23 @@ def main():
     from datetime import datetime
 
     stamp = datetime.now().isoformat(timespec="minutes")
-    lines = []
+    items = []
     for candidate, tema, hechos in picked:
-        lines.append(
-            f"{tema} || CONTEXTO: {hechos} (Fuente: {candidate['source']}) "
-            f"|| FECHA: {stamp}"
+        items.append(
+            {
+                "tema": tema,
+                "contexto": f"{hechos} (Fuente: {candidate['source']})",
+                "fuente": candidate["source"],
+                "fecha": stamp,
+            }
         )
         seen.append(candidate["link"])
         print(f"[news] Encolada: {tema}")
 
-    prepend_topics(lines)
+    queue_news(items)
     with open(SEEN_PATH, "w", encoding="utf-8") as fh:
         json.dump(seen[-500:], fh, ensure_ascii=False, indent=1)
-    print(f"[news] {len(lines)} noticias añadidas al principio de topics.txt")
+    print(f"[news] {len(items)} noticias añadidas a news_queue.json")
 
 
 if __name__ == "__main__":

@@ -15,3 +15,4 @@ branding/
 
 logs/
 models/
+news_queue.json

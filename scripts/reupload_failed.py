@@ -72,7 +72,7 @@ def main() -> None:
         youtube.video_path = os.path.abspath(path)
         if video.get("news"):
             # Preserve news-ness: publish immediately instead of queueing
-            youtube.topic_context = "reupload-news"
+            youtube._news_immediate = True
 
         if youtube.upload_video():
             recovered += 1
