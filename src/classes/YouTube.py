@@ -235,11 +235,32 @@ class YouTube:
         with open(self._topic_history_path(), "w", encoding="utf-8") as f:
             json.dump(history[-100:], f, ensure_ascii=False, indent=2)
 
+    NEWS_MAX_AGE_HOURS = 20
+
+    @classmethod
+    def _is_expired_news(cls, line: str) -> bool:
+        """
+        News lines carry a "|| FECHA: <iso>" harvest stamp; past
+        NEWS_MAX_AGE_HOURS they are stale and must be discarded, because
+        an old news video is worse than no video.
+        """
+        match = re.search(r"\|\|\s*FECHA\s*:\s*([0-9T:\-]+)", line)
+        if not match:
+            return False
+        try:
+            harvested = datetime.fromisoformat(match.group(1))
+        except ValueError:
+            return False
+        return (datetime.now() - harvested) > timedelta(
+            hours=cls.NEWS_MAX_AGE_HOURS
+        )
+
     def _pop_queued_topic(self) -> str:
         """
         Takes (and removes) the first pending topic from topics.txt, a
-        user-maintained queue at the project root. Returns None when the
-        file is missing or has no pending entries.
+        user-maintained queue at the project root. Expired news lines are
+        dropped on the way. Returns None when the file is missing or has
+        no pending entries.
         """
         path = os.path.join(ROOT_DIR, "topics.txt")
         if not os.path.exists(path):
@@ -252,11 +273,14 @@ class YouTube:
         for line in lines:
             stripped = line.strip()
             if picked is None and stripped and not stripped.startswith("#"):
+                if self._is_expired_news(stripped):
+                    warning(f"Noticia caducada, descartada: {stripped[:70]}")
+                    continue
                 picked = stripped
                 continue
             remaining.append(line)
 
-        if picked is not None:
+        if picked is not None or len(remaining) != len(lines):
             with open(path, "w", encoding="utf-8") as f:
                 f.writelines(remaining)
 
@@ -289,8 +313,13 @@ class YouTube:
         with open(path, "r", encoding="utf-8-sig") as f:
             for line in f:
                 stripped = line.strip()
-                if stripped and not stripped.startswith("#"):
-                    return stripped
+                if (
+                    stripped
+                    and not stripped.startswith("#")
+                    and not self._is_expired_news(stripped)
+                ):
+                    # Only the topic itself: context/date stay out of teasers
+                    return stripped.split("||")[0].strip()
         return None
 
     def generate_topic(self) -> str:
@@ -310,12 +339,13 @@ class YouTube:
         # to those facts instead of the model's memory
         self.topic_context = None
         if queued and "||" in queued:
-            queued, _, raw_context = queued.partition("||")
-            queued = queued.strip()
-            context = re.sub(
-                r"^\s*CONTEXTO\s*:\s*", "", raw_context.strip(), flags=re.IGNORECASE
-            )
-            self.topic_context = context or None
+            parts = [p.strip() for p in queued.split("||")]
+            queued = parts[0]
+            for part in parts[1:]:
+                if re.match(r"(?i)^CONTEXTO\s*:", part):
+                    self.topic_context = (
+                        re.sub(r"(?i)^CONTEXTO\s*:\s*", "", part) or None
+                    )
 
         if queued:
             if get_verbose():

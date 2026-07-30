@@ -125,6 +125,11 @@ def main() -> None:
         action="store_true",
         help="apaga el servidor ComfyUI al terminar (para ejecuciones nocturnas)",
     )
+    parser.add_argument(
+        "--news-only",
+        action="store_true",
+        help="genera solo mientras el siguiente tema pendiente sea una noticia",
+    )
     args = parser.parse_args()
 
     acquire_single_instance_lock()
@@ -141,8 +146,22 @@ def main() -> None:
     started = datetime.now()
     results = []
 
+    def next_pending_is_news():
+        try:
+            with open(os.path.join(ROOT, "topics.txt"), encoding="utf-8-sig") as fh:
+                for line in fh:
+                    stripped = line.strip()
+                    if stripped and not stripped.startswith("#"):
+                        return "CONTEXTO" in stripped
+        except FileNotFoundError:
+            pass
+        return False
+
     try:
         while args.max <= 0 or produced < args.max:
+            if args.news_only and not next_pending_is_news():
+                print("[batch] No quedan noticias pendientes; fin del ciclo.")
+                break
             iteration = produced + 1
             print(f"\n[batch] ===== Vídeo {iteration}{f'/{args.max}' if args.max > 0 else ''} =====")
             rem_temp_files()

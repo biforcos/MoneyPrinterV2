@@ -161,10 +161,14 @@ def main():
         print("[news] El redactor jefe no eligió ninguna.")
         return
 
+    from datetime import datetime
+
+    stamp = datetime.now().isoformat(timespec="minutes")
     lines = []
     for candidate, tema, hechos in picked:
         lines.append(
-            f"{tema} || CONTEXTO: {hechos} (Fuente: {candidate['source']})"
+            f"{tema} || CONTEXTO: {hechos} (Fuente: {candidate['source']}) "
+            f"|| FECHA: {stamp}"
         )
         seen.append(candidate["link"])
         print(f"[news] Encolada: {tema}")
