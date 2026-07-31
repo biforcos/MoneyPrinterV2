@@ -947,6 +947,29 @@ class YouTube:
                 segments.append((match.group(1), match.group(2).strip()))
         return segments if len(segments) >= 2 else None
 
+    @staticmethod
+    def _apply_pronunciation_glossary(text: str) -> str:
+        """
+        Deterministic first pass: replaces known gaming terms with their
+        Spanish-phonetic respelling from pronunciacion.json (longest terms
+        first, whole words, case-insensitive). The LLM polish then only
+        has to improvise on terms the glossary doesn't know yet.
+        """
+        path = os.path.join(ROOT_DIR, "pronunciacion.json")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                glossary = json.load(f)
+        except Exception:
+            return text
+        for term in sorted(glossary, key=len, reverse=True):
+            text = re.sub(
+                rf"\b{re.escape(term)}\b",
+                glossary[term],
+                text,
+                flags=re.IGNORECASE,
+            )
+        return text
+
     def _speech_polish(self, script: str) -> str:
         """
         Rewrites the script for narration only: punctuation tuned for
@@ -955,6 +978,7 @@ class YouTube:
         must stay identical; subtitles are unaffected (Whisper transcribes
         the audio and restores canonical spellings).
         """
+        script = self._apply_pronunciation_glossary(script)
         polished = generate_text(
             "Eres el corrector de locución de un canal español de YouTube. "
             "Reescribe este guion SOLO para ser leído en voz alta por un "
