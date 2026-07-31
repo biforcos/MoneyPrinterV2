@@ -1690,6 +1690,23 @@ class YouTube:
                     "El botón de publicar/programar está deshabilitado: "
                     "YouTube está rechazando la subida (¿límite diario?)"
                 )
+            # Capture the video URL from the dialog's own share link: the
+            # content-list scrape misreports scheduled videos
+            dialog_video_id = ""
+            try:
+                for anchor in driver.find_elements(
+                    By.CSS_SELECTOR, "a[href*='/shorts/'], a[href*='watch?v=']"
+                ):
+                    href = anchor.get_attribute("href") or ""
+                    if "/shorts/" in href:
+                        dialog_video_id = href.rstrip("/").split("/")[-1].split("?")[0]
+                        break
+                    if "watch?v=" in href:
+                        dialog_video_id = href.split("watch?v=")[-1].split("&")[0]
+                        break
+            except Exception:
+                pass
+
             self._dismiss_popups(driver)
             driver.execute_script("arguments[0].click();", done_button)
 
@@ -1749,30 +1766,33 @@ class YouTube:
             # Get the latest uploaded video URL. The video is already
             # published at this point, so a failure here must not fail the
             # upload — Studio can take a while to list a fresh video.
-            url = ""
-            try:
-                driver.get(
-                    f"https://studio.youtube.com/channel/{self.channel_id}/videos/short"
-                )
-                videos = []
-                for attempt in range(12):
-                    time.sleep(5)
-                    videos = driver.find_elements(By.TAG_NAME, "ytcp-video-row")
-                    if videos:
-                        break
-                    if attempt % 4 == 3:
-                        driver.refresh()
-                first_video = videos[0]
-                anchor_tag = first_video.find_element(By.TAG_NAME, "a")
-                href = anchor_tag.get_attribute("href")
-                if verbose:
-                    info(f"\t=> Extracting video ID from URL: {href}")
-                video_id = href.split("/")[-2]
-                url = build_url(video_id)
-            except Exception as url_err:
-                warning(
-                    f"Video was published, but its URL could not be retrieved: {url_err}"
-                )
+            url = build_url(dialog_video_id) if dialog_video_id else ""
+            if not url:
+                # Fallback: scrape the content list (unreliable for
+                # scheduled videos, hence the dialog capture above)
+                try:
+                    driver.get(
+                        f"https://studio.youtube.com/channel/{self.channel_id}/videos/short"
+                    )
+                    videos = []
+                    for attempt in range(12):
+                        time.sleep(5)
+                        videos = driver.find_elements(By.TAG_NAME, "ytcp-video-row")
+                        if videos:
+                            break
+                        if attempt % 4 == 3:
+                            driver.refresh()
+                    first_video = videos[0]
+                    anchor_tag = first_video.find_element(By.TAG_NAME, "a")
+                    href = anchor_tag.get_attribute("href")
+                    if verbose:
+                        info(f"\t=> Extracting video ID from URL: {href}")
+                    video_id = href.split("/")[-2]
+                    url = build_url(video_id)
+                except Exception as url_err:
+                    warning(
+                        f"Video was published, but its URL could not be retrieved: {url_err}"
+                    )
 
             self.uploaded_video_url = url
 
