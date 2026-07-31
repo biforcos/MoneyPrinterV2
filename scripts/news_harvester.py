@@ -34,7 +34,7 @@ from llm_provider import select_model, generate_text
 SEEN_PATH = os.path.join(ROOT, ".mp", "news_seen.json")
 QUEUE_PATH = os.path.join(ROOT, "news_queue.json")
 MAX_AGE_HOURS = 36
-MAX_CANDIDATES = 40
+MAX_CANDIDATES = 60
 
 
 def strip_html(text):
@@ -51,7 +51,7 @@ def load_seen():
 
 
 def collect_candidates(seen):
-    candidates = []
+    per_feed = []
     now = time.time()
     for url in get_news_feeds():
         try:
@@ -60,7 +60,7 @@ def collect_candidates(seen):
             print(f"[news] Feed KO {url}: {e}")
             continue
         source = strip_html(feed.feed.get("title", url))[:40] or url
-        fresh = 0
+        feed_candidates = []
         for entry in feed.entries[:25]:
             link = entry.get("link", "")
             if not link or link in seen:
@@ -68,7 +68,7 @@ def collect_candidates(seen):
             published = entry.get("published_parsed") or entry.get("updated_parsed")
             if published and (now - time.mktime(published)) > MAX_AGE_HOURS * 3600:
                 continue
-            candidates.append(
+            feed_candidates.append(
                 {
                     "title": strip_html(entry.get("title", ""))[:200],
                     "summary": strip_html(entry.get("summary", ""))[:500],
@@ -76,8 +76,16 @@ def collect_candidates(seen):
                     "source": source,
                 }
             )
-            fresh += 1
-        print(f"[news] {source}: {fresh} noticias frescas")
+        print(f"[news] {source}: {len(feed_candidates)} noticias frescas")
+        per_feed.append(feed_candidates)
+
+    # Round-robin interleave: every source gets a seat at the editor's
+    # table, instead of the first feeds monopolizing the candidate cap
+    candidates = []
+    for i in range(max((len(f) for f in per_feed), default=0)):
+        for feed_candidates in per_feed:
+            if i < len(feed_candidates):
+                candidates.append(feed_candidates[i])
     return candidates[:MAX_CANDIDATES]
 
 
