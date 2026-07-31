@@ -947,6 +947,47 @@ class YouTube:
                 segments.append((match.group(1), match.group(2).strip()))
         return segments if len(segments) >= 2 else None
 
+    def _speech_polish(self, script: str) -> str:
+        """
+        Rewrites the script for narration only: punctuation tuned for
+        spoken rhythm and foreign terms respelled with approximate Spanish
+        phonetics so the Spanish TTS pronounces them naturally. Content
+        must stay identical; subtitles are unaffected (Whisper transcribes
+        the audio and restores canonical spellings).
+        """
+        polished = generate_text(
+            "Eres el corrector de locución de un canal español de YouTube. "
+            "Reescribe este guion SOLO para ser leído en voz alta por un "
+            "sintetizador de voz español:\n"
+            "1) Puntuación de locutor: parte toda frase de más de 20 palabras "
+            "en frases cortas; coma donde el narrador respiraría; conserva "
+            "los puntos suspensivos dramáticos.\n"
+            "2) OBLIGATORIO: adapta TODOS los términos y títulos en inglés, "
+            "sin excepción, a transcripción fonética española aproximada con "
+            "tildes. Ejemplos del estilo: gameplay -> guéimplei; open world "
+            "-> óupen uorld; speedrun -> espídran; Breath of the Wild -> "
+            "Brez of de Wáild; weapon durability system -> uépon durabíliti "
+            "sístem; streaming -> estrímin. NUNCA traduzcas al español un "
+            "término inglés (weapon durability system NO es 'arma "
+            "durabilidad sistema'): solo cambia su ESCRITURA para que un "
+            "locutor español lo PRONUNCIE como en inglés. Repasa palabra a "
+            "palabra: si es inglés, se adapta. Siglas como DLC, RPG o PS5 "
+            "se dejan tal cual. Las reglas 1 y 2 son AMBAS obligatorias: "
+            "aplica la puntuación Y la fonética.\n"
+            "3) NO cambies el contenido: ni añadas, ni quites, ni resumas "
+            'frases. Si hay prefijos "A:" o "B:" al inicio de línea, '
+            "consérvalos exactamente.\n"
+            "Devuelve SOLO el guion corregido, nada más.\n\n" + script,
+            think=True,
+        ).strip()
+
+        # Sanity check: a polish that halves or doubles the script is a
+        # rewrite, not a polish - fall back to the original
+        if polished and 0.6 < len(polished) / max(len(script), 1) < 1.6:
+            return polished
+        warning("Speech polish result discarded (length mismatch)")
+        return script
+
     def generate_script_to_speech(self, tts_instance: TTS) -> str:
         """
         Converts the generated script into Speech using KittenTTS and returns the path to the wav file.
@@ -958,6 +999,13 @@ class YouTube:
             path_to_wav (str): Path to generated audio (WAV Format).
         """
         path = os.path.join(ROOT_DIR, ".mp", str(uuid4()) + ".wav")
+
+        # Narration-only rewrite: spoken punctuation + Spanish phonetics
+        # for foreign terms
+        try:
+            self.script = self._speech_polish(self.script)
+        except Exception as e:
+            warning(f"Speech polish failed, using raw script: {e}")
 
         # End every video with the subscribe call-to-action (next-topic teaser
         # when available) so it gets spoken and picked up by the subtitles
