@@ -153,7 +153,14 @@ class YouTube:
             dismissed (bool): True if a popup was dismissed.
         """
         dismissed = False
-        for label in ("Entendido", "Got it", "Aceptar", "OK"):
+        for label in (
+            "Publicar de todas formas",
+            "Publish anyway",
+            "Entendido",
+            "Got it",
+            "Aceptar",
+            "OK",
+        ):
             for el in driver.find_elements(
                 By.XPATH, f"//*[normalize-space(text())='{label}']"
             ):
