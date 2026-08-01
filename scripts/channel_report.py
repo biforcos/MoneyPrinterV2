@@ -31,8 +31,10 @@ from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.firefox.options import Options
 from webdriver_manager.firefox import GeckoDriverManager
 
+import shutil
+
 from cache import get_accounts
-from config import get_ollama_model
+from config import get_ollama_model, get_summary_export_path
 from llm_provider import select_model, generate_text
 
 INSIGHTS_PATH = os.path.join(ROOT, ".mp", "audience_insights.json")
@@ -116,16 +118,28 @@ def main():
         )
 
     os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
+    report = {
+        "generated": datetime.now().isoformat(timespec="minutes"),
+        "videos": videos,
+    }
     with open(REPORT_PATH, "w", encoding="utf-8") as fh:
-        json.dump(
-            {"generated": datetime.now().isoformat(timespec="minutes"), "videos": videos},
-            fh,
-            ensure_ascii=False,
-            indent=2,
-        )
+        json.dump(report, fh, ensure_ascii=False, indent=2)
+
+    def export_report():
+        export = get_summary_export_path().strip()
+        if export:
+            try:
+                shutil.copy2(
+                    REPORT_PATH,
+                    os.path.join(os.path.dirname(export), "channel_report.json"),
+                )
+                print("[report] Informe exportado para el briefing")
+            except Exception as e:
+                print(f"[report] No se pudo exportar: {e}")
 
     if len(public) < 3:
         print("[report] Aún pocos vídeos públicos para extraer patrones.")
+        export_report()
         return
 
     select_model(get_ollama_model())
@@ -147,6 +161,11 @@ def main():
     )
     print("\n===== ANÁLISIS DEL LLM =====")
     print(analysis)
+
+    report["analysis"] = analysis
+    with open(REPORT_PATH, "w", encoding="utf-8") as fh:
+        json.dump(report, fh, ensure_ascii=False, indent=2)
+    export_report()
 
     match = re.search(r'\{\s*"temas_ganadores"\s*:\s*\[.*?\]\s*\}', analysis, re.DOTALL)
     if match:

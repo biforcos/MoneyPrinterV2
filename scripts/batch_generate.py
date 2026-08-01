@@ -177,14 +177,29 @@ def main() -> None:
             entry = {"status": "generation_failed"}
             iteration_start = datetime.now()
             try:
-                youtube = YouTube(
-                    account["id"],
-                    account["nickname"],
-                    account["firefox_profile"],
-                    account["niche"],
-                    account["language"],
-                )
-                youtube.generate_video(tts)
+                generation_error = None
+                for attempt in (1, 2):
+                    youtube = YouTube(
+                        account["id"],
+                        account["nickname"],
+                        account["firefox_profile"],
+                        account["niche"],
+                        account["language"],
+                    )
+                    try:
+                        youtube.generate_video(tts)
+                        generation_error = None
+                        break
+                    except Exception as gen_err:
+                        generation_error = gen_err
+                        # Put the consumed topic back and retry once:
+                        # most failures are transient hiccups
+                        youtube.restore_consumed_topic()
+                        if attempt == 1:
+                            print(f"[batch] Generación falló, reintento en 30s: {gen_err}")
+                            time.sleep(30)
+                if generation_error is not None:
+                    raise generation_error
                 produced += 1
                 entry.update(
                     topic=getattr(youtube, "subject", ""),

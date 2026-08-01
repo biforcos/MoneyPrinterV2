@@ -287,6 +287,44 @@ class YouTube:
 
         return picked
 
+    def restore_consumed_topic(self) -> None:
+        """
+        Puts the topic consumed by generate_topic back at the front of its
+        queue, so a failed generation doesn't burn it.
+        """
+        news_item = getattr(self, "_consumed_news_item", None)
+        line = getattr(self, "_consumed_topic_line", None)
+        try:
+            if news_item:
+                path = os.path.join(ROOT_DIR, "news_queue.json")
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        queue = json.load(f)
+                except Exception:
+                    queue = []
+                queue.insert(0, news_item)
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(queue, f, ensure_ascii=False, indent=1)
+            elif line:
+                path = os.path.join(ROOT_DIR, "topics.txt")
+                lines = []
+                if os.path.exists(path):
+                    with open(path, "r", encoding="utf-8-sig") as f:
+                        lines = f.readlines()
+                head, rest = [], lines
+                while rest and (
+                    rest[0].strip().startswith("#") or not rest[0].strip()
+                ):
+                    head.append(rest.pop(0))
+                with open(path, "w", encoding="utf-8") as f:
+                    f.writelines(head)
+                    f.write(line + "\n")
+                    f.writelines(rest)
+            self._consumed_news_item = None
+            self._consumed_topic_line = None
+        except Exception as e:
+            warning(f"No se pudo devolver el tema a la cola: {e}")
+
     def _pop_queued_topic(self) -> str:
         """
         Takes (and removes) the first pending topic from topics.txt, the
@@ -373,12 +411,16 @@ class YouTube:
         self._news_immediate = False
 
         news_item = self._pop_queued_news()
+        # Remember what was consumed so a failed generation can put it back
+        self._consumed_news_item = news_item
+        self._consumed_topic_line = None
         if news_item:
             queued = news_item.get("tema", "").strip()
             self.topic_context = news_item.get("contexto") or None
             self._news_immediate = True
         else:
             queued = self._pop_queued_topic()
+            self._consumed_topic_line = queued
             # A hand-written topic may carry grounding facts after "||":
             # the script must then stick to those facts
             if queued and "||" in queued:

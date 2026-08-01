@@ -14,3 +14,4 @@ venv\Scripts\python.exe scripts\news_harvester.py >> logs\nightly.log 2>&1
 venv\Scripts\python.exe scripts\reupload_failed.py >> logs\nightly.log 2>&1
 venv\Scripts\python.exe scripts\batch_generate.py --max 2 --shutdown-comfyui >> logs\nightly.log 2>&1
 venv\Scripts\python.exe scripts\pin_comments.py >> logs\nightly.log 2>&1
+venv\Scripts\python.exe scripts\comments_check.py >> logs\nightly.log 2>&1
