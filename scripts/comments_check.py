@@ -73,9 +73,13 @@ def main():
             lines = [l.strip() for l in thread.text.split("\n") if l.strip()]
             if not lines:
                 continue
+            full_text = thread.text
             text = " | ".join(lines[:4])[:220]
             # Skip our own pinned questions (they appear in the inbox too)
             if any(q[:40] in text for q in pinned if q):
+                continue
+            # Skip threads the channel already replied to
+            if account["nickname"] in full_text or "The gaming nerd" in full_text:
                 continue
             pending.append(text)
     finally:
