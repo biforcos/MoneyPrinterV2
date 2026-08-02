@@ -1220,6 +1220,60 @@ class YouTube:
             )
         return text
 
+    def _generate_loop_bridge(self) -> str:
+        """
+        Writes the closing sentence for a loop-ending video: one sentence
+        that flows naturally back into the script's opening, so the Short
+        replays without the viewer noticing the seam. Returns "" on any
+        failure — a dry stop reveals the loop far less than a subscribe
+        CTA would, so there is deliberately no CTA fallback.
+        """
+        first_line = next(
+            (l.strip() for l in (self.script or "").splitlines() if l.strip()), ""
+        )
+        first_line = re.sub(r"^[AB]:\s*", "", first_line)
+        match = re.search(r".+?[.!?…]", first_line)
+        first_sentence = (match.group(0) if match else first_line).strip()
+        if not first_sentence:
+            return ""
+        try:
+            bridge = generate_text(
+                "Este guion de un Short de YouTube se reproducirá en bucle: "
+                "al terminar, vuelve a empezar sin corte. Escribe UNA frase "
+                "de cierre NUEVA (que no aparece en el guion) que deje la "
+                "idea en el aire para que la primera frase del guion la "
+                "recoja al reiniciarse.\n\n"
+                "Ejemplo del patrón:\n"
+                'Primera frase del guion: "Nintendo acaba de matar a la '
+                'competencia."\n'
+                'Frase de cierre válida: "Y mientras Sony y Microsoft aún '
+                'hacen cuentas, alguien en Kioto sonríe..."\n'
+                "(al reiniciarse suena: cierre -> primera frase, y encaja)\n\n"
+                f"Guion:\n{self.script}\n\n"
+                "Primera frase (sonará justo después de tu frase): "
+                f'"{first_sentence}"\n\n'
+                "REGLAS:\n"
+                "- NO repitas ni parafrasees ninguna frase del guion.\n"
+                "- PROHIBIDO: despedidas, agradecimientos, suscripción, "
+                "likes, campanita, resumir o cualquier fórmula de cierre.\n"
+                f"- Escríbela en {self.language}. Devuelve SOLO esa frase, "
+                "nada más.",
+                temperature=0.9,
+            ).strip().strip('"')
+            # Echo guard: qwen sometimes copies a script sentence verbatim,
+            # which would play twice in a row at the loop seam
+            if bridge and bridge.lower() in self.script.lower():
+                if get_verbose():
+                    warning(f"Loop bridge discarded (echoes the script): {bridge}")
+                return ""
+            if bridge and get_verbose():
+                info(f" => Frase puente para el loop: {bridge}")
+            return bridge
+        except Exception as e:
+            if get_verbose():
+                warning(f"Loop bridge generation failed: {str(e)}")
+            return ""
+
     def _classify_music_mood(self) -> str:
         """
         Asks the LLM which soundtrack mood fits the script, out of the
@@ -1343,9 +1397,14 @@ class YouTube:
         except Exception as e:
             warning(f"Speech polish failed, using raw script: {e}")
 
-        # End every video with the subscribe call-to-action (next-topic teaser
-        # when available) so it gets spoken and picked up by the subtitles
-        cta = (getattr(self, "cta", "") or get_subscribe_cta()).strip()
+        # End the video with its closing sentence: the loop bridge (which may
+        # legitimately be empty — never fall back to the CTA there, an empty
+        # ending betrays the loop less than "suscríbete" would) or the
+        # subscribe call-to-action / next-topic teaser
+        if getattr(self, "loop_ending", False):
+            cta = (getattr(self, "cta", "") or "").strip()
+        else:
+            cta = (getattr(self, "cta", "") or get_subscribe_cta()).strip()
 
         def clean(text):
             # Keep commas/ellipses (narration pauses) and Spanish ¿¡
@@ -1653,6 +1712,11 @@ class YouTube:
         n_scenes = max(len(self.images), int(round(max_duration / 3)))
         scene_dur = (max_duration + CROSSFADE * (n_scenes - 1)) / n_scenes
         image_cycle = [self.images[i % len(self.images)] for i in range(n_scenes)]
+        if getattr(self, "loop_ending", False) and n_scenes >= 2:
+            # Close the visual loop: the last scene shows the same shot (and
+            # LTXV clip, keyed by image path) as the first, so the replay
+            # seam disappears
+            image_cycle[-1] = self.images[0]
 
         scene_clips = getattr(self, "scene_clips", {}) or {}
         clips = []
@@ -1701,7 +1765,10 @@ class YouTube:
         random_song_clip = random_song_clip.fx(afx.volumex, 0.1)
         if random_song_clip.duration > max_duration:
             random_song_clip = random_song_clip.subclip(0, max_duration)
-        random_song_clip = random_song_clip.fx(afx.audio_fadeout, 2.5)
+        # Loop videos keep the music alive to the end (0.5s only avoids a
+        # click); the classic ending can afford a real fade-out
+        fadeout = 0.5 if getattr(self, "loop_ending", False) else 2.5
+        random_song_clip = random_song_clip.fx(afx.audio_fadeout, fadeout)
 
         audio_layers = [tts_clip.set_fps(44100), random_song_clip]
 
@@ -1937,10 +2004,18 @@ class YouTube:
         # Generate the Image Prompts
         self.generate_prompts()
 
-        # Build the closing CTA while the LLM is still loaded: tease the next
-        # queued topic when there is one, else fall back to the fixed CTA
-        self.cta = get_subscribe_cta().strip()
-        next_topic = self._peek_queued_topic()
+        # Ending style A/B: a bridge sentence that flows back into the
+        # opening (seamless Shorts loop, no CTA at all) vs the classic
+        # subscribe CTA. Decided per video, persisted for analytics.
+        self.loop_ending = random.random() < get_loop_ending_ratio()
+        if self.loop_ending:
+            self.cta = self._generate_loop_bridge()
+            next_topic = None
+        else:
+            # Build the closing CTA while the LLM is still loaded: tease the
+            # next queued topic when there is one, else the fixed CTA
+            self.cta = get_subscribe_cta().strip()
+            next_topic = self._peek_queued_topic()
         if next_topic:
             bell_hint = (
                 ' Refer to the notification bell as "la campanita".'
@@ -2391,6 +2466,7 @@ class YouTube:
                     "description": self.metadata["description"],
                     "url": url,
                     "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "loop_ending": bool(getattr(self, "loop_ending", False)),
                 }
             )
 

@@ -255,6 +255,18 @@ def get_animate_scenes() -> bool:
     with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("animate_scenes", False)
 
+def get_loop_ending_ratio() -> float:
+    """
+    Fraction of videos (0.0-1.0) that get a loop-friendly ending: the
+    closing sentence bridges back into the opening and the subscribe CTA
+    is dropped entirely, so the Short replays seamlessly.
+
+    Returns:
+        ratio (float): Probability of a loop ending per video
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return float(json.load(file).get("loop_ending_ratio", 0.5))
+
 def get_script_sentence_length_range() -> list:
     """
     Gets the optional [min, max] range for script sentence count. When set,
