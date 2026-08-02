@@ -1,0 +1,35 @@
+{
+  "epica": [
+    "Adventure.mp3",
+    "Battle Ready.mp3",
+    "Blacksmith.mp3",
+    "Drop Point.mp3",
+    "Guerilla Tactics.mp3",
+    "Heroic Adventure.mp3",
+    "Rulers of Our Lands.mp3",
+    "Spec Ops.mp3"
+  ],
+  "tension": [
+    "3 am West End.mp3",
+    "Abstract Anxiety.mp3",
+    "Silent Night (Unholy Night).mp3"
+  ],
+  "tranquila": [
+    "A Waltz For Naseem.mp3",
+    "Adding the Sun.mp3",
+    "Ambient Bongos.mp3",
+    "Baltic Levity.mp3",
+    "Connecting Rainbows.mp3",
+    "Coy Koi.mp3",
+    "Hold Me, Love Me.mp3",
+    "Motions.mp3",
+    "Windy Old Weather - thin.mp3"
+  ],
+  "divertida": [
+    "Fancy Family.mp3",
+    "From Page to Practice.mp3",
+    "Inventing Flight.mp3",
+    "Managing Mischief.mp3",
+    "Release the Hybrids.mp3"
+  ]
+}

@@ -1220,6 +1220,40 @@ class YouTube:
             )
         return text
 
+    def _classify_music_mood(self) -> str:
+        """
+        Asks the LLM which soundtrack mood fits the script, out of the
+        mood keys defined in Songs/moods.json. Returns the mood key, or
+        None (keep the fully random pick) if anything fails.
+        """
+        try:
+            with open(
+                os.path.join(ROOT_DIR, "Songs", "moods.json"), "r", encoding="utf-8"
+            ) as f:
+                moods = list(json.load(f).keys())
+        except Exception:
+            return None
+        if not moods:
+            return None
+        try:
+            answer = generate_text(
+                "Eres el director musical de un canal de YouTube sobre "
+                "videojuegos. Lee este guion y elige el ambiente de la "
+                "música de fondo que mejor le pega.\n\n"
+                f"{self.script}\n\n"
+                f"Responde SOLO con una palabra de esta lista: {', '.join(moods)}",
+                temperature=0.2,
+            ).strip().lower()
+            for mood in moods:
+                if mood in answer:
+                    if get_verbose():
+                        info(f" => Música de fondo: mood '{mood}'")
+                    return mood
+        except Exception as e:
+            if get_verbose():
+                warning(f"Music mood classification failed: {str(e)}")
+        return None
+
     @staticmethod
     def _fix_caption_text(text: str) -> str:
         """
@@ -1637,7 +1671,7 @@ class YouTube:
 
         final_clip = concatenate_videoclips(clips, method="compose", padding=-CROSSFADE)
         final_clip = final_clip.set_fps(30)
-        random_song = choose_random_song()
+        random_song = choose_random_song(getattr(self, "music_mood", None))
 
         subtitles = None
         try:
@@ -1925,6 +1959,10 @@ class YouTube:
                 self.cta = teaser
                 if get_verbose():
                     info(f" => CTA teaser for next topic: {teaser}")
+
+        # Pick the soundtrack mood while the LLM is still loaded; combine()
+        # turns it into a matching background song
+        self.music_mood = self._classify_music_mood()
 
         # With local image generation, free Ollama's VRAM first: the LLM and
         # the diffusion model don't fit together on a 12 GB GPU

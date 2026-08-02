@@ -1,4 +1,5 @@
 import os
+import json
 import random
 import zipfile
 import requests
@@ -134,9 +135,14 @@ def fetch_songs() -> None:
         error(f"Error occurred while fetching songs: {str(e)}")
 
 
-def choose_random_song() -> str:
+def choose_random_song(mood: str = None) -> str:
     """
-    Chooses a random song from the songs/ directory.
+    Chooses a random song from the songs/ directory. When a mood is given
+    and Songs/moods.json knows it, the pick is restricted to that mood's
+    songs; otherwise any song can come up.
+
+    Args:
+        mood (str): Optional mood key from Songs/moods.json.
 
     Returns:
         str: The path to the chosen song.
@@ -151,6 +157,17 @@ def choose_random_song() -> str:
         ]
         if len(songs) == 0:
             raise RuntimeError("No audio files found in Songs directory")
+        if mood:
+            try:
+                with open(
+                    os.path.join(songs_dir, "moods.json"), "r", encoding="utf-8"
+                ) as f:
+                    wanted = set(json.load(f).get(mood) or [])
+                matching = [s for s in songs if s in wanted]
+                if matching:
+                    songs = matching
+            except Exception:
+                pass
         song = random.choice(songs)
         success(f" => Chose song: {song}")
         return os.path.join(ROOT_DIR, "Songs", song)

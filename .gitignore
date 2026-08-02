@@ -1,11 +1,12 @@
-__pycache__
+﻿__pycache__
 config.json
 .mp/
 videos/
 voz_*.wav
 topics.txt
 venv/
-Songs/
+Songs/*
+!Songs/moods.json
 google-maps-scraper-0.9.7/
 niche.txt
 *.exe
