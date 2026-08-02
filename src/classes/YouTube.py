@@ -1,3 +1,5 @@
+import difflib
+import math
 import re
 import base64
 import json
@@ -1081,6 +1083,10 @@ class YouTube:
         """
         path = os.path.join(ROOT_DIR, ".mp", str(uuid4()) + ".wav")
 
+        # Kept for the QC gate: Whisper restores canonical spellings, so
+        # the transcript compares best against the pre-phonetics script
+        self._script_source = self.script
+
         # Narration-only rewrite: spoken punctuation + Spanish phonetics
         # for foreign terms
         try:
@@ -1250,6 +1256,10 @@ class YouTube:
 
         # Karaoke-style captions: groups of 2-3 words timed to the voice
         words = [w for segment in segments for w in (segment.words or [])]
+        # Word-level timings for the accent-word overlay in combine()
+        self._word_timings = [
+            (w.word.strip(), float(w.start), float(w.end)) for w in words
+        ]
         chunks, current = [], []
         for word in words:
             current.append(word)
@@ -1439,6 +1449,65 @@ class YouTube:
         final_clip = final_clip.set_audio(comp_audio)
         final_clip = final_clip.set_duration(tts_clip.duration)
 
+        def _karaoke_layers(word_timings):
+            """
+            Pro-style captions: 2-3 word white line with the word being
+            spoken overlaid in gold at its exact position.
+            """
+            SUBS_START = 0.6
+            ACCENT = "#FFD700"
+            y_pos = int(1920 * 0.63)
+
+            chunks, current = [], []
+            for word, w_start, w_end in word_timings:
+                if not word:
+                    continue
+                current.append((word.upper(), w_start, w_end))
+                text = " ".join(x[0] for x in current)
+                if len(current) >= 3 or len(text) >= 16:
+                    chunks.append(current)
+                    current = []
+            if current:
+                chunks.append(current)
+
+            def make_text(text, color):
+                return TextClip(
+                    text,
+                    font=subtitle_font,
+                    fontsize=85,
+                    color=color,
+                    stroke_color="black",
+                    stroke_width=3,
+                    method="label",
+                )
+
+            space_w = make_text("i i", "white").w - make_text("ii", "white").w
+            built = []
+            for chunk in chunks:
+                start = max(chunk[0][1], SUBS_START)
+                end = max(chunk[-1][2], start + 0.3)
+                if end <= SUBS_START:
+                    continue
+                line = " ".join(x[0] for x in chunk)
+                base = make_text(line, "white")
+                x0 = (1080 - base.w) / 2
+                built.append(
+                    base.set_position((x0, y_pos)).set_start(start).set_end(end)
+                )
+                offset = 0
+                for word, w_start, w_end in chunk:
+                    accent = make_text(word, ACCENT)
+                    a_start = max(w_start, start)
+                    a_end = max(min(w_end, end), a_start + 0.1)
+                    built.append(
+                        accent.set_position((x0 + offset, y_pos))
+                        .set_start(a_start)
+                        .set_end(a_end)
+                    )
+                    offset += accent.w + space_w
+                del base
+            return built
+
         layers = [final_clip]
 
         # Burned-in opening title (hashtags stripped): anchors the topic
@@ -1466,6 +1535,15 @@ class YouTube:
                 .crossfadeout(0.4)
             )
 
+        word_timings = getattr(self, "_word_timings", None)
+        if word_timings:
+            # Accent-word karaoke replaces the plain subtitles
+            try:
+                layers.extend(_karaoke_layers(word_timings))
+                subtitles = None
+            except Exception as e:
+                warning(f"Karaoke captions failed, using plain subtitles: {e}")
+
         if subtitles is not None:
             # Below-center keeps faces/subjects visible; relative so it
             # holds for any resolution
@@ -1473,6 +1551,44 @@ class YouTube:
 
         if len(layers) > 1:
             final_clip = CompositeVideoClip(layers)
+
+        # Kinetic emphasis: a subtle zoom punch on key words (numbers,
+        # long/rare terms), synced via the word timestamps. Only the punch
+        # windows pay the resize cost.
+        emphasis_times = []
+        if word_timings:
+            last_punch = -10.0
+            for word, w_start, _ in word_timings:
+                clean = re.sub(r"\W", "", word)
+                if w_start < 1.0 or w_start - last_punch < 2.5:
+                    continue
+                if any(c.isdigit() for c in clean) or len(clean) >= 9:
+                    emphasis_times.append(w_start)
+                    last_punch = w_start
+                if len(emphasis_times) >= 4:
+                    break
+
+        if emphasis_times:
+            PUNCH = 0.25
+            pieces, cursor = [], 0.0
+            for punch_at in emphasis_times:
+                if punch_at >= final_clip.duration - PUNCH:
+                    break
+                if punch_at > cursor:
+                    pieces.append(final_clip.subclip(cursor, punch_at))
+                window = final_clip.subclip(punch_at, punch_at + PUNCH).resize(
+                    lambda t: 1 + 0.05 * math.sin(math.pi * t / PUNCH)
+                )
+                pieces.append(
+                    CompositeVideoClip(
+                        [window.set_position("center")], size=(1080, 1920)
+                    )
+                )
+                cursor = punch_at + PUNCH
+            pieces.append(final_clip.subclip(cursor))
+            final_clip = concatenate_videoclips(pieces)
+            if get_verbose():
+                info(f" => Énfasis cinético en {len(emphasis_times)} palabras clave")
 
         raw_path = combined_image_path + ".raw.mp4"
         final_clip.write_videofile(raw_path, threads=threads)
@@ -1581,6 +1697,33 @@ class YouTube:
 
         # Combine everything
         path = self.combine()
+
+        # QC gate: what the voice actually said (Whisper transcript) must
+        # match the script. Catches garbled narration before it uploads.
+        transcript = " ".join(
+            w for w, _, _ in getattr(self, "_word_timings", []) or []
+        )
+        source = getattr(self, "_script_source", "")
+        if transcript and source:
+
+            def norm(text):
+                return re.sub(r"[^\wáéíóúñü ]", " ", text.lower()).split()
+
+            ratio = difflib.SequenceMatcher(
+                None, norm(source), norm(transcript)
+            ).ratio()
+            if get_verbose():
+                info(f" => QC locución vs guion: {ratio:.0%}")
+            if ratio < 0.55:
+                raise RuntimeError(
+                    f"QC: la locución no coincide con el guion "
+                    f"(similitud {ratio:.0%}); vídeo descartado"
+                )
+            if ratio < 0.7:
+                warning(
+                    f"QC: similitud locución/guion baja ({ratio:.0%}), "
+                    "revisa el vídeo si puedes"
+                )
 
         if get_verbose():
             info(f" => Generated Video: {path}")
