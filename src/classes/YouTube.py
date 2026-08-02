@@ -1,6 +1,7 @@
 import difflib
 import math
 import re
+import unicodedata
 import base64
 import json
 import time
@@ -1298,11 +1299,24 @@ class YouTube:
                 f"Responde SOLO con una palabra de esta lista: {', '.join(moods)}",
                 temperature=0.2,
             ).strip().lower()
+
+            def _fold(s: str) -> str:
+                # The buckets are accentless keys but the LLM answers in
+                # proper Spanish ("tensión"), so compare without diacritics
+                return "".join(
+                    c
+                    for c in unicodedata.normalize("NFD", s)
+                    if not unicodedata.combining(c)
+                )
+
+            folded_answer = _fold(answer)
             for mood in moods:
-                if mood in answer:
+                if _fold(mood.lower()) in folded_answer:
                     if get_verbose():
                         info(f" => Música de fondo: mood '{mood}'")
                     return mood
+            if get_verbose():
+                warning(f"Music mood answer matched no bucket: {answer!r}")
         except Exception as e:
             if get_verbose():
                 warning(f"Music mood classification failed: {str(e)}")
