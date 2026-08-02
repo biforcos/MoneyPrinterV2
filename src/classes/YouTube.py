@@ -1837,7 +1837,16 @@ class YouTube:
                 info(f" => Énfasis cinético en {len(emphasis_times)} palabras clave")
 
         raw_path = combined_image_path + ".raw.mp4"
-        final_clip.write_videofile(raw_path, threads=threads)
+        # Keep MoviePy's temp audio inside .mp/ so a crash never strands
+        # a TEMP_MPY_wvf_snd.mp3 in the project root (rem_temp_files only
+        # sweeps .mp/)
+        final_clip.write_videofile(
+            raw_path,
+            threads=threads,
+            temp_audiofile=os.path.join(
+                ROOT_DIR, ".mp", str(uuid4()) + "_temp_audio.mp3"
+            ),
+        )
 
         # Normalize loudness to YouTube's -14 LUFS reference so every
         # video plays at the same professional level
