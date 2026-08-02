@@ -898,7 +898,8 @@ class YouTube:
             },
             "latent": {
                 "class_type": "EmptySD3LatentImage",
-                "inputs": {"width": 768, "height": 1344, "batch_size": 1},
+                # A/B tested vs 768x1344@4: visibly richer light and detail
+                "inputs": {"width": 832, "height": 1472, "batch_size": 1},
             },
             "sampler": {
                 "class_type": "KSampler",
@@ -908,7 +909,7 @@ class YouTube:
                     "negative": ["negative", 0],
                     "latent_image": ["latent", 0],
                     "seed": random.randint(0, 2**32 - 1),
-                    "steps": 4,
+                    "steps": 6,
                     "cfg": 1.0,
                     "sampler_name": "euler",
                     "scheduler": "simple",
@@ -1601,7 +1602,12 @@ class YouTube:
                     "ffmpeg", "-y", "-loglevel", "error",
                     "-i", raw_path,
                     "-af", "loudnorm=I=-14:TP=-1.5:LRA=11",
-                    "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                    # Subtle film grain + vignette: hides AI smoothness and
+                    # glues scenes of different styles together
+                    "-vf", "noise=alls=5:allf=t,vignette=a=PI/7",
+                    "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "192k",
                     combined_image_path,
                 ],
                 check=True,
