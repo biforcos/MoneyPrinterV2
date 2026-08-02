@@ -87,16 +87,22 @@ def main():
         browser.execute_script("arguments[0].click();", candidates[-1])
         time.sleep(5)
 
-        # Verify: reload the inbox; a replied thread leaves the pending list
-        browser.get(inbox)
-        time.sleep(10)
-        still_there = any(
-            args.author in t.text
-            for t in browser.find_elements(By.TAG_NAME, "ytcp-comment-thread")
-        )
+        # Verify: a replied thread leaves the pending inbox. Studio can
+        # take a while to reflect it, so poll before declaring failure.
+        still_there = True
+        for _ in range(4):
+            browser.get(inbox)
+            time.sleep(10)
+            still_there = any(
+                args.author in t.text
+                for t in browser.find_elements(By.TAG_NAME, "ytcp-comment-thread")
+            )
+            if not still_there:
+                break
         if still_there:
             raise SystemExit(
-                "El hilo sigue en pendientes: la respuesta NO se envió"
+                "El hilo sigue en pendientes tras 4 comprobaciones: "
+                "la respuesta NO se envió"
             )
         print(f"RESPONDIDO a {args.author}: {args.text}")
     finally:
