@@ -514,6 +514,21 @@ class YouTube:
 
         Get straight to the point, don't start with unnecessary things like, "welcome to this video".
 
+        IMITATE THE STRUCTURE AND RHYTHM (not the content) of these two
+        example scripts that performed exceptionally well:
+
+        EXAMPLE 1 (news style): "La beta de Mortal Shell 2 llega a consolas...
+        y esta vez sin exclusividad de PC. Los jugadores de PlayStation y Xbox
+        podrán probarla desde el día uno. El estudio confirma mejoras en el
+        combate y un nuevo sistema de armas. Una decisión que cambia las
+        reglas: las betas ya no son territorio exclusivo del PC."
+
+        EXAMPLE 2 (curiosity style): "Casi la mitad de las ventas de Final
+        Fantasy siguen siendo en formato físico. Mientras la industria entera
+        empuja hacia lo digital, sus fans llenan estanterías. Los coleccionistas
+        pagan hasta el doble por ediciones limitadas. Y por eso, aunque todo
+        sea digital algún día... Final Fantasy seguirá vendiéndose en cajas."
+
         STICK TO WELL-KNOWN, VERIFIABLE FACTS. NEVER invent specific numbers,
         dates, names or events you are not sure about — vague but true beats
         precise but false.

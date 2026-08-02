@@ -26,6 +26,32 @@ class TTS:
             self._kokoro = Kokoro(KOKORO_MODEL, KOKORO_VOICES)
 
     @staticmethod
+    def _voice_polish(wav_path: str) -> None:
+        """
+        Broadcast-style shaping of the raw voice: high-pass to remove
+        rumble, gentle compression for consistent level, and a presence
+        lift so it cuts through the music. Voice only - applied before
+        mixing, so the soundtrack is untouched.
+        """
+        polished = wav_path + ".eq.wav"
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-loglevel", "error", "-i", wav_path,
+                    "-af",
+                    "highpass=f=80,"
+                    "acompressor=threshold=-18dB:ratio=3:attack=10:release=150,"
+                    "equalizer=f=3500:t=q:w=1:g=2",
+                    polished,
+                ],
+                check=True,
+            )
+            os.replace(polished, wav_path)
+        except Exception:
+            if os.path.exists(polished):
+                os.remove(polished)
+
+    @staticmethod
     def _kokoro_lang(voice: str) -> str:
         # Kokoro voice ids encode the language in the first letter
         return {"e": "es", "a": "en-us", "b": "en-gb"}.get(voice[:1], "es")
@@ -39,6 +65,7 @@ class TTS:
                 text, voice=self._voice, speed=1.05, lang=self._kokoro_lang(self._voice)
             )
             sf.write(output_file, samples, rate)
+            self._voice_polish(output_file)
             return output_file
 
         audio = self._model.generate(text, voice=self._voice)
@@ -63,6 +90,7 @@ class TTS:
                 chunks.append(samples)
                 chunks.append(np.zeros(int(rate * 0.25), dtype=samples.dtype))
             sf.write(output_file, np.concatenate(chunks), rate)
+            self._voice_polish(output_file)
             return output_file
 
         import edge_tts
@@ -114,4 +142,5 @@ class TTS:
             check=True,
         )
         os.remove(mp3_path)
+        self._voice_polish(output_file)
         return output_file
