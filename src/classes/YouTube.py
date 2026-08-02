@@ -1220,6 +1220,30 @@ class YouTube:
             )
         return text
 
+    @staticmethod
+    def _fix_caption_text(text: str) -> str:
+        """
+        Whisper writes what it hears, and en español eso pierde haches
+        mudas ("hadas" -> "adas") o deforma anglicismos. Replaces known
+        mishearings with the canonical spelling from
+        correcciones_subtitulos.json (longest first, whole words,
+        case-insensitive) before the text reaches captions or overlays.
+        """
+        path = os.path.join(ROOT_DIR, "correcciones_subtitulos.json")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                corrections = json.load(f)
+        except Exception:
+            return text
+        for wrong in sorted(corrections, key=len, reverse=True):
+            text = re.sub(
+                rf"\b{re.escape(wrong)}\b",
+                corrections[wrong],
+                text,
+                flags=re.IGNORECASE,
+            )
+        return text
+
     def _speech_polish(self, script: str) -> str:
         """
         Rewrites the script for narration only: punctuation tuned for
@@ -1449,7 +1473,8 @@ class YouTube:
         words = [w for segment in segments for w in (segment.words or [])]
         # Word-level timings for the accent-word overlay in combine()
         self._word_timings = [
-            (w.word.strip(), float(w.start), float(w.end)) for w in words
+            (self._fix_caption_text(w.word.strip()), float(w.start), float(w.end))
+            for w in words
         ]
         chunks, current = [], []
         for word in words:
@@ -1463,7 +1488,7 @@ class YouTube:
 
         lines = []
         for idx, chunk in enumerate(chunks, start=1):
-            text = "".join(w.word for w in chunk).strip()
+            text = self._fix_caption_text("".join(w.word for w in chunk).strip())
             if not text:
                 continue
             lines.append(str(idx))
