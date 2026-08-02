@@ -243,6 +243,18 @@ def get_comfyui_base_url() -> str:
     with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return json.load(file).get("comfyui_base_url", "http://127.0.0.1:8188")
 
+def get_animate_scenes() -> bool:
+    """
+    Whether to animate the generated stills into short img2vid clips
+    (LTX-Video on the local ComfyUI server). When off, or when a clip
+    fails to generate, scenes fall back to the Ken Burns zoom/pan.
+
+    Returns:
+        animate (bool): True to animate scenes
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return json.load(file).get("animate_scenes", False)
+
 def get_script_sentence_length_range() -> list:
     """
     Gets the optional [min, max] range for script sentence count. When set,

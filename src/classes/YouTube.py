@@ -89,6 +89,8 @@ class YouTube:
         self._language: str = language
 
         self.images = []
+        # image path -> animated clip path (img2vid), filled when enabled
+        self.scene_clips = {}
 
         # Initialize the Firefox profile
         self.options: Options = Options()
@@ -980,6 +982,194 @@ class YouTube:
                 warning(f"Failed to generate image with ComfyUI: {str(e)}")
             return None
 
+    def animate_image_comfyui(self, image_path: str, scene_prompt: str = None) -> str:
+        """
+        Animates a still into a ~4s vertical clip using LTX-Video 2B
+        distilled (img2vid) on the local ComfyUI server.
+
+        Args:
+            image_path (str): The still to animate.
+            scene_prompt (str): The image prompt, used to ground the motion.
+
+        Returns:
+            path (str): Path to the MP4 clip, or None so the caller can
+            fall back to the Ken Burns still.
+        """
+        print(f"Animating image with LTX-Video: {os.path.basename(image_path)}")
+
+        base_url = get_comfyui_base_url().rstrip("/")
+        motion_prompt = (
+            (scene_prompt.strip().rstrip(".") + ". " if scene_prompt else "")
+            + "Cinematic live scene. The camera drifts slowly with subtle "
+            "parallax. Elements in the scene move naturally and smoothly: "
+            "hair and clothing sway, light flickers, particles float "
+            "through the air. High quality, coherent motion, no distortion."
+        )
+        negative_prompt = (
+            "worst quality, inconsistent motion, blurry, jittery, distorted, "
+            "warping, morphing, extra limbs, text, watermark"
+        )
+
+        try:
+            with open(image_path, "rb") as f:
+                upload = requests.post(
+                    f"{base_url}/upload/image",
+                    files={"image": (os.path.basename(image_path), f, "image/png")},
+                    data={"overwrite": "true"},
+                    timeout=60,
+                )
+            upload.raise_for_status()
+            image_name = upload.json()["name"]
+
+            workflow = {
+                "ckpt": {
+                    "class_type": "CheckpointLoaderSimple",
+                    "inputs": {"ckpt_name": "ltxv-2b-0.9.8-distilled.safetensors"},
+                },
+                "clip": {
+                    "class_type": "CLIPLoaderGGUF",
+                    "inputs": {
+                        "clip_name": "t5-v1_1-xxl-encoder-Q5_K_M.gguf",
+                        "type": "ltxv",
+                    },
+                },
+                "positive": {
+                    "class_type": "CLIPTextEncode",
+                    "inputs": {"text": motion_prompt, "clip": ["clip", 0]},
+                },
+                "negative": {
+                    "class_type": "CLIPTextEncode",
+                    "inputs": {"text": negative_prompt, "clip": ["clip", 0]},
+                },
+                "image": {
+                    "class_type": "LoadImage",
+                    "inputs": {"image": image_name},
+                },
+                # 576x1024 is exactly 9:16; LTXV needs /32 dimensions and
+                # 8n+1 frames: 97 frames -> ~3.9s at 25fps
+                "i2v": {
+                    "class_type": "LTXVImgToVideo",
+                    "inputs": {
+                        "positive": ["positive", 0],
+                        "negative": ["negative", 0],
+                        "vae": ["ckpt", 2],
+                        "image": ["image", 0],
+                        "width": 576,
+                        "height": 1024,
+                        "length": 97,
+                        "batch_size": 1,
+                        "strength": 1.0,
+                    },
+                },
+                "cond": {
+                    "class_type": "LTXVConditioning",
+                    "inputs": {
+                        "positive": ["i2v", 0],
+                        "negative": ["i2v", 1],
+                        "frame_rate": 25.0,
+                    },
+                },
+                "sampler_sel": {
+                    "class_type": "KSamplerSelect",
+                    "inputs": {"sampler_name": "euler"},
+                },
+                "sigmas": {
+                    "class_type": "LTXVScheduler",
+                    "inputs": {
+                        "steps": 8,
+                        "max_shift": 2.05,
+                        "base_shift": 0.95,
+                        "stretch": True,
+                        "terminal": 0.1,
+                        "latent": ["i2v", 2],
+                    },
+                },
+                "sample": {
+                    "class_type": "SamplerCustom",
+                    "inputs": {
+                        "model": ["ckpt", 0],
+                        "add_noise": True,
+                        "noise_seed": random.randint(0, 2**32 - 1),
+                        "cfg": 1.0,
+                        "positive": ["cond", 0],
+                        "negative": ["cond", 1],
+                        "sampler": ["sampler_sel", 0],
+                        "sigmas": ["sigmas", 0],
+                        "latent_image": ["i2v", 2],
+                    },
+                },
+                "decode": {
+                    "class_type": "VAEDecode",
+                    "inputs": {"samples": ["sample", 0], "vae": ["ckpt", 2]},
+                },
+                "video": {
+                    "class_type": "CreateVideo",
+                    "inputs": {"images": ["decode", 0], "fps": 25.0},
+                },
+                "save": {
+                    "class_type": "SaveVideo",
+                    "inputs": {
+                        "video": ["video", 0],
+                        "filename_prefix": "mpv2_anim",
+                        "format": "mp4",
+                        "codec": "h264",
+                    },
+                },
+            }
+
+            response = requests.post(
+                f"{base_url}/prompt", json={"prompt": workflow}, timeout=30
+            )
+            response.raise_for_status()
+            prompt_id = response.json()["prompt_id"]
+
+            # First clip includes the LTXV model load; allow up to ~20 minutes
+            for _ in range(240):
+                time.sleep(5)
+                history = requests.get(
+                    f"{base_url}/history/{prompt_id}", timeout=30
+                ).json()
+                if prompt_id not in history:
+                    continue
+                entry = history[prompt_id]
+                if entry.get("status", {}).get("status_str") == "error":
+                    warning("LTX-Video animation errored; falling back to the still.")
+                    return None
+                for node_output in entry.get("outputs", {}).values():
+                    for value in node_output.values():
+                        if not isinstance(value, list):
+                            continue
+                        for item in value:
+                            if not (
+                                isinstance(item, dict)
+                                and str(item.get("filename", "")).endswith(".mp4")
+                            ):
+                                continue
+                            clip = requests.get(
+                                f"{base_url}/view",
+                                params={
+                                    "filename": item["filename"],
+                                    "subfolder": item.get("subfolder", ""),
+                                    "type": item.get("type", "output"),
+                                },
+                                timeout=120,
+                            )
+                            clip.raise_for_status()
+                            clip_path = os.path.join(
+                                ROOT_DIR, ".mp", str(uuid4()) + "_anim.mp4"
+                            )
+                            with open(clip_path, "wb") as f:
+                                f.write(clip.content)
+                            return clip_path
+                break
+
+            warning("ComfyUI did not produce an animation in time; using the still.")
+            return None
+        except Exception as e:
+            if get_verbose():
+                warning(f"Failed to animate image: {str(e)}")
+            return None
+
     def generate_image(self, prompt: str) -> str:
         """
         Generates an AI Image based on the given prompt using the configured provider.
@@ -1375,17 +1565,47 @@ class YouTube:
             )
             return scene.set_duration(duration).set_fps(30)
 
+        def _animated_scene(clip_path: str, duration: float) -> CompositeVideoClip:
+            """
+            Builds one scene from an img2vid clip (576x1024, exactly 9:16),
+            scaled to fill the 1080x1920 frame. Clips shorter than the scene
+            are slowed slightly instead of freeze-framing.
+            """
+            clip = VideoFileClip(clip_path, audio=False)
+            if clip.duration < duration:
+                clip = clip.fx(vfx.speedx, clip.duration / duration)
+            else:
+                clip = clip.subclip(0, duration)
+            scale = max(1080 / clip.w, 1920 / clip.h)
+            clip = clip.resize((round(clip.w * scale), round(clip.h * scale)))
+            if (clip.w, clip.h) != (1080, 1920):
+                clip = crop(
+                    clip,
+                    width=1080,
+                    height=1920,
+                    x_center=clip.w / 2,
+                    y_center=clip.h / 2,
+                )
+            scene = CompositeVideoClip([clip], size=(1080, 1920))
+            return scene.set_duration(duration).set_fps(30)
+
         # One scene every ~3s, cycling through the images if there are
         # fewer than needed; crossfades overlap so durations compensate
         n_scenes = max(len(self.images), int(round(max_duration / 3)))
         scene_dur = (max_duration + CROSSFADE * (n_scenes - 1)) / n_scenes
         image_cycle = [self.images[i % len(self.images)] for i in range(n_scenes)]
 
+        scene_clips = getattr(self, "scene_clips", {}) or {}
         clips = []
         for i, image_path in enumerate(image_cycle):
+            anim_path = scene_clips.get(image_path)
             if get_verbose():
-                info(f" => Building scene {i + 1}/{n_scenes}: {os.path.basename(image_path)}")
-            scene = _ken_burns_scene(image_path, scene_dur, dramatic=(i == 0))
+                kind = "anim" if anim_path else "still"
+                info(f" => Building scene {i + 1}/{n_scenes} ({kind}): {os.path.basename(image_path)}")
+            if anim_path and os.path.exists(anim_path):
+                scene = _animated_scene(anim_path, scene_dur)
+            else:
+                scene = _ken_burns_scene(image_path, scene_dur, dramatic=(i == 0))
             if i > 0:
                 scene = scene.crossfadein(CROSSFADE)
             clips.append(scene)
@@ -1635,6 +1855,7 @@ class YouTube:
         # from a previous generation (whose temp files are already deleted)
         self.images = []
         self.image_prompts = []
+        self.scene_clips = {}
 
         # Generate the Topic
         self.generate_topic()
@@ -1679,12 +1900,26 @@ class YouTube:
             unload_model()
 
         # Generate the Images
+        prompt_by_image = {}
         for prompt in self.image_prompts:
-            self.generate_image(prompt)
+            image_path = self.generate_image(prompt)
+            if image_path:
+                prompt_by_image[image_path] = prompt
 
         if not self.images:
             error("No images were generated. Check your image provider (ComfyUI server or API credits).")
             raise RuntimeError("Cannot build a video without images")
+
+        # Animate the stills into real motion clips (img2vid). ComfyUI swaps
+        # FLUX out for LTX-Video on its own; any failure keeps the still and
+        # combine() falls back to Ken Burns for that scene.
+        if get_animate_scenes() and get_image_provider() == "comfyui":
+            for image_path in self.images:
+                clip_path = self.animate_image_comfyui(
+                    image_path, prompt_by_image.get(image_path)
+                )
+                if clip_path:
+                    self.scene_clips[image_path] = clip_path
 
         # Mirror of the pre-image unload: free ComfyUI's VRAM so the next
         # LLM phase (or the next batch iteration) can load Ollama on GPU
