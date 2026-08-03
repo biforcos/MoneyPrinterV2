@@ -1697,6 +1697,11 @@ class YouTube:
             )
             return scene.set_duration(duration).set_fps(30)
 
+        # Readers opened for animated scenes: they must be closed after the
+        # render or Windows keeps the _anim.mp4 files locked and the next
+        # iteration's temp cleanup dies
+        opened_readers = []
+
         def _animated_scene(clip_path: str, duration: float) -> CompositeVideoClip:
             """
             Builds one scene from an img2vid clip (576x1024, exactly 9:16),
@@ -1704,6 +1709,7 @@ class YouTube:
             are slowed slightly instead of freeze-framing.
             """
             clip = VideoFileClip(clip_path, audio=False)
+            opened_readers.append(clip)
             if clip.duration < duration:
                 clip = clip.fx(vfx.speedx, clip.duration / duration)
             else:
@@ -1985,6 +1991,13 @@ class YouTube:
         except Exception as e:
             warning(f"Loudness normalization failed, keeping raw audio: {e}")
             shutil.move(raw_path, combined_image_path)
+
+        # Release the img2vid readers so their temp files can be cleaned
+        for reader in opened_readers:
+            try:
+                reader.close()
+            except Exception:
+                pass
 
         success(f'Wrote Video to "{combined_image_path}"')
 

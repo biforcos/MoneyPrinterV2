@@ -60,7 +60,12 @@ def rem_temp_files() -> None:
 
     for file in files:
         if not file.endswith(".json"):
-            os.remove(os.path.join(mp_dir, file))
+            try:
+                os.remove(os.path.join(mp_dir, file))
+            except OSError as e:
+                # A file still held by a lingering reader (e.g. moviepy)
+                # must never kill the run; it will be removed next sweep
+                warning(f"No se pudo borrar {file}: {e}")
 
 
 def fetch_songs() -> None:
