@@ -1807,7 +1807,7 @@ class YouTube:
                 audio_layers.append(
                     AudioFileClip(random.choice(sfx_files))
                     .set_fps(44100)
-                    .fx(afx.volumex, 0.18)
+                    .fx(afx.volumex, 0.09)
                     .set_start(max(0.0, boundary - 0.25))
                 )
 
