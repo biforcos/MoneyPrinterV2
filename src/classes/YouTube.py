@@ -542,10 +542,14 @@ class YouTube:
         an occasional ellipsis (...) right before a reveal or surprising fact,
         so the voice pauses dramatically. One or two ellipses per script, max.
 
-        THE FIRST SENTENCE MUST BE A POWERFUL HOOK: a surprising fact, a bold claim
-        or an intriguing question directly about the subject, so the viewer stays.
-        NEVER open with generic phrases like "La evolución de...", "En este video..."
-        or "¿Sabías que...". Be specific and punchy from the first word.
+        THE FIRST SENTENCE IS THE MOST IMPORTANT: the viewer decides whether to
+        swipe away within 2 seconds. It must be SHORT (10 words maximum) and lead
+        with the single most shocking concrete element of the subject — a number,
+        a name, a contradiction. State the payoff first; the rest of the script
+        explains it. Example rhythm (not content): "Ocho millones de copias. Sin
+        gastar un euro en publicidad." or "Quake regala su nueva campaña... 30
+        años después." NEVER open with context or generic phrases like "La
+        evolución de...", "En este video..." or "¿Sabías que...".
 
         THE LAST SENTENCE must connect back to the idea of the first sentence,
         so the video feels seamless when it loops and replays.
