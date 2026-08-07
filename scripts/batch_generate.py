@@ -104,7 +104,7 @@ def ensure_local_providers() -> None:
 
     print("[batch] Arrancando ComfyUI...")
     os.startfile(os.path.join(ROOT, "scripts", "start_comfyui.bat"))
-    for _ in range(24):
+    for _ in range(60):
         time.sleep(5)
         try:
             requests.get(f"{comfy}/system_stats", timeout=3)
@@ -112,7 +112,7 @@ def ensure_local_providers() -> None:
             return
         except Exception:
             continue
-    raise SystemExit("ComfyUI no ha arrancado tras 2 minutos.")
+    raise SystemExit("ComfyUI no ha arrancado tras 5 minutos.")
 
 
 def main() -> None:
