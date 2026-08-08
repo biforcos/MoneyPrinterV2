@@ -17,3 +17,4 @@ branding/
 logs/
 models/
 news_queue.json
+.claude/settings.local.json
