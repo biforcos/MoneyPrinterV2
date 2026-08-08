@@ -104,6 +104,7 @@ class YouTube:
         self._tts_voice_b: str = (extras.get("tts_voice_b") or "").strip()
         self._subscribe_cta: str = (extras.get("subscribe_cta") or "").strip()
         self._use_queues: bool = bool(extras.get("use_queues", True))
+        self._schedule_hours: list = list(extras.get("schedule_hours") or [])
 
         self.images = []
         # image path -> animated clip path (img2vid), filled when enabled
@@ -153,7 +154,9 @@ class YouTube:
         except Exception:
             pass
 
-        hours = sorted(get_schedule_hours() or [13, 20])
+        # Per-account hours first (e.g. the EN channel targets US prime
+        # time), then the global config
+        hours = sorted(self._schedule_hours or get_schedule_hours() or [13, 20])
         for day_offset in range(0, 60):
             day = datetime.now().date() + timedelta(days=day_offset)
             for hour in hours:
@@ -778,6 +781,10 @@ class YouTube:
         - If a character matters, show them as a distant silhouette,
           from behind, or represent them through an iconic object.
         - The images must contain NO readable text, signs or logos.
+        - THE FIRST PROMPT decides whether the viewer stays: it must be
+          the most dramatic, striking and eye-catching shot of the whole
+          set (extreme scale, bold contrast, tension or spectacle), while
+          still following every rule above.
 
         YOU MUST ONLY RETURN THE JSON-ARRAY OF STRINGS.
         YOU MUST NOT RETURN ANYTHING ELSE.
@@ -1340,6 +1347,40 @@ class YouTube:
             if get_verbose():
                 warning(f"Loop bridge generation failed: {str(e)}")
             return ""
+
+    def _generate_hook_overlay(self) -> str:
+        """
+        On-screen headline of 3-5 words with the script's most shocking
+        concrete element, burned in during the opening seconds. Returns ""
+        on any failure — combine() then falls back to the video title.
+        """
+        try:
+            hook = (
+                generate_text(
+                    "From this video script, extract the single most "
+                    "shocking concrete element (a number, a name, a "
+                    "contradiction) and write an on-screen headline of 3 "
+                    f"to 5 words, in {self.language}. No hashtags, no "
+                    "quotes, no final period. It must be understandable "
+                    "on its own and spark curiosity. Only return the "
+                    f"headline, nothing else.\n\nScript:\n{self.script}",
+                    temperature=0.8,
+                )
+                .strip()
+                .strip("\"'«»“”")
+                .strip()
+            )
+            hook = re.sub(r"[#*_`]", "", hook).strip().rstrip(".")
+            if hook and 2 <= len(hook.split()) <= 7 and len(hook) <= 50:
+                if get_verbose():
+                    info(f" => Hook overlay: {hook}")
+                return hook
+            if hook and get_verbose():
+                warning(f"Hook overlay discarded (size): {hook!r}")
+        except Exception as e:
+            if get_verbose():
+                warning(f"Hook overlay failed: {e}")
+        return ""
 
     def _classify_music_mood(self) -> str:
         """
@@ -1975,9 +2016,11 @@ class YouTube:
 
         layers = [final_clip]
 
-        # Burned-in opening title (hashtags stripped): anchors the topic
-        # visually and improves the frame YouTube samples for the grid
-        opening_title = (
+        # Burned-in opening headline: the LLM's 3-5 word shock hook when
+        # available (bigger, feed-legible), else the full title. Also
+        # improves the frame YouTube samples for the grid.
+        hook_text = (getattr(self, "hook_text", "") or "").strip()
+        opening_title = hook_text or (
             re.sub(r"#\S+", "", getattr(self, "metadata", {}).get("title", ""))
             .strip()
             .rstrip(" .-:")
@@ -1986,7 +2029,7 @@ class YouTube:
             title_clip = TextClip(
                 opening_title.upper(),
                 font=subtitle_font,
-                fontsize=92,
+                fontsize=112 if hook_text else 92,
                 color="white",
                 stroke_color="black",
                 stroke_width=4,
@@ -2163,6 +2206,7 @@ class YouTube:
         # Pick the soundtrack mood while the LLM is still loaded; combine()
         # turns it into a matching background song
         self.music_mood = self._classify_music_mood()
+        self.hook_text = self._generate_hook_overlay()
 
         # With local image generation, free Ollama's VRAM first: the LLM and
         # the diffusion model don't fit together on a 12 GB GPU
