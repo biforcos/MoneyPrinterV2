@@ -1833,9 +1833,10 @@ class YouTube:
                     ((s.start.total_seconds(), s.end.total_seconds()), s.content)
                     for s in srt_lib.parse(srt_file.read())
                 ]
-            # Keep the opening frames text-free: thumbnails often sample
-            # them and a half-sentence caption looks broken on the grid
-            SUBS_START = 0.6
+            # Keep the very first frames text-free (thumbnails sample
+            # them) but get captions on screen fast: silent text is a
+            # swipe-away trigger in the feed
+            SUBS_START = 0.3
             parsed_subs = [
                 ((max(start, SUBS_START), end), text)
                 for (start, end), text in parsed_subs
@@ -1887,7 +1888,7 @@ class YouTube:
             Pro-style captions: 2-3 word white line with the word being
             spoken overlaid in gold at its exact position.
             """
-            SUBS_START = 0.6
+            SUBS_START = 0.3
             ACCENT = "#FFD700"
             y_pos = int(1920 * 0.63)
 

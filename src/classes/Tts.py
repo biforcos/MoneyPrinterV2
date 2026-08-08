@@ -32,6 +32,11 @@ class TTS:
         rumble, gentle compression for consistent level, and a presence
         lift so it cuts through the music. Voice only - applied before
         mixing, so the soundtrack is untouched.
+
+        Also trims the dead air: leading silence delays the hook (the
+        viewer decides in the first 2 seconds) and trailing silence
+        stretches the video past the last word, which loop endings feel
+        as a hiccup before the replay.
         """
         polished = wav_path + ".eq.wav"
         try:
@@ -39,6 +44,10 @@ class TTS:
                 [
                     "ffmpeg", "-y", "-loglevel", "error", "-i", wav_path,
                     "-af",
+                    "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.08,"
+                    "areverse,"
+                    "silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.25,"
+                    "areverse,"
                     "highpass=f=80,"
                     "acompressor=threshold=-18dB:ratio=3:attack=10:release=150,"
                     "equalizer=f=3500:t=q:w=1:g=2",
