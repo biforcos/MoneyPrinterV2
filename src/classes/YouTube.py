@@ -2564,6 +2564,9 @@ class YouTube:
                     "url": url,
                     "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "loop_ending": bool(getattr(self, "loop_ending", False)),
+                    "mood": getattr(self, "music_mood", None),
+                    "dialogue": bool(getattr(self, "_dialogue", False)),
+                    "news": bool(getattr(self, "_news_immediate", False)),
                 }
             )
 
