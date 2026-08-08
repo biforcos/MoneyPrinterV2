@@ -625,6 +625,43 @@ class YouTube:
         text = " ".join(text.split())
         return text.strip().strip("\"'«»“”").strip()
 
+    @staticmethod
+    def _title_problems(title: str) -> List[str]:
+        """
+        Detects the malformations that have actually reached the channel:
+        numbered lists leaking into the title, stray inverted marks mid
+        sentence and hashtags broken by a space.
+        """
+        problems = []
+        if len(title) > 100:
+            problems.append("demasiado largo")
+        if re.search(r"\s\d+\s*[.)]\s", title):
+            problems.append("lista numerada")
+        if re.search(r"(?<=[\wáéíóúüñ,)])\s+[¡¿]", title):
+            problems.append("¡/¿ suelto en mitad de frase")
+        if re.search(r"#\w+\s+[A-ZÁÉÍÓÚÜÑ][\wáéíóúüñ]*\s*(?=#|$)", title):
+            problems.append("hashtag partido")
+        return problems
+
+    @staticmethod
+    def _repair_title(title: str) -> str:
+        """
+        Last-resort mechanical fixes when regeneration keeps producing a
+        malformed title.
+        """
+        # A numbered list means only the first item is the real title;
+        # keep the trailing hashtags from wherever they ended up
+        if re.search(r"\s\d+\s*[.)]\s", title):
+            hashtags = re.findall(r"#\w+", title)
+            title = re.split(r"\s\d+\s*[.)]\s", title)[0].strip()
+            title = (title + " " + " ".join(hashtags)).strip()
+        title = re.sub(r"(?<=[\wáéíóúüñ,)])\s+[¡¿]", " ", title)
+        title = re.sub(r"(#\w+)\s+([A-ZÁÉÍÓÚÜÑ][\wáéíóúüñ]*)\s*$", r"\1\2", title)
+        title = " ".join(title.split())
+        if len(title) > 100:
+            title = title[:97].rsplit(" ", 1)[0].rstrip("#").rstrip() + "..."
+        return title
+
     def generate_metadata(self) -> dict:
         """
         Generates Video metadata for the to-be-uploaded YouTube Short (Title, Description).
@@ -640,18 +677,22 @@ class YouTube:
                     f"Please generate a YouTube Video Title for the following subject, including hashtags: {self.subject}. "
                     f"Write it as {title_style}. "
                     f"The title MUST be written in this language: {self.language}. "
+                    "Return ONE single title (never a numbered list of options). "
+                    "Hashtags must be single words without spaces inside them. "
                     "Do not wrap it in quotes. Only return the title, nothing else. "
                     "Limit the title under 100 characters."
                 )
             )
-            if len(title) <= 100:
+            problems = self._title_problems(title)
+            if not problems:
                 break
             if get_verbose():
-                warning("Generated Title is too long. Retrying...")
+                warning(f"Título malformado ({', '.join(problems)}): {title!r}. Reintentando...")
 
-        if len(title) > 100:
-            # Cut on a word boundary and drop any half-written hashtag
-            title = title[:97].rsplit(" ", 1)[0].rstrip("#").rstrip() + "..."
+        if self._title_problems(title):
+            title = self._repair_title(title)
+            if get_verbose():
+                warning(f"Título reparado mecánicamente: {title!r}")
 
         plain_script = re.sub(
             r"^\s*[AB]\s*[:.\-]\s*", "", self.script, flags=re.MULTILINE
@@ -1392,6 +1433,27 @@ class YouTube:
         warning("Speech polish result discarded (length mismatch)")
         return script
 
+    def _qc_locucion(self):
+        """
+        Similarity between the pre-phonetics script and what the voice
+        actually said (Whisper transcript from the subtitle pass).
+
+        Returns:
+            ratio (float | None): 0-1 similarity, or None if either side
+            is missing.
+        """
+        transcript = " ".join(
+            w for w, _, _ in getattr(self, "_word_timings", []) or []
+        )
+        source = getattr(self, "_script_source", "")
+        if not (transcript and source):
+            return None
+
+        def norm(text):
+            return re.sub(r"[^\wáéíóúñü ]", " ", text.lower()).split()
+
+        return difflib.SequenceMatcher(None, norm(source), norm(transcript)).ratio()
+
     def generate_script_to_speech(self, tts_instance: TTS) -> str:
         """
         Converts the generated script into Speech using KittenTTS and returns the path to the wav file.
@@ -2119,18 +2181,21 @@ class YouTube:
 
         # QC gate: what the voice actually said (Whisper transcript) must
         # match the script. Catches garbled narration before it uploads.
-        transcript = " ".join(
-            w for w, _, _ in getattr(self, "_word_timings", []) or []
-        )
-        source = getattr(self, "_script_source", "")
-        if transcript and source:
-
-            def norm(text):
-                return re.sub(r"[^\wáéíóúñü ]", " ", text.lower()).split()
-
-            ratio = difflib.SequenceMatcher(
-                None, norm(source), norm(transcript)
-            ).ratio()
+        ratio = self._qc_locucion()
+        if ratio is not None and ratio < 0.75:
+            # One retry: the speech polish is stochastic, so a fresh
+            # narration often clears a garbled take before giving up
+            warning(
+                f"QC: similitud locución/guion baja ({ratio:.0%}); "
+                "reintentando locución..."
+            )
+            self.script = self._script_source
+            self.generate_script_to_speech(tts_instance)
+            retry_path = self.combine()
+            retry_ratio = self._qc_locucion()
+            if retry_ratio is not None and retry_ratio > ratio:
+                path, ratio = retry_path, retry_ratio
+        if ratio is not None:
             if get_verbose():
                 info(f" => QC locución vs guion: {ratio:.0%}")
             if ratio < 0.55:
