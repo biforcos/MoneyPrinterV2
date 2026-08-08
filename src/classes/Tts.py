@@ -65,19 +65,26 @@ class TTS:
         # Kokoro voice ids encode the language in the first letter
         return {"e": "es", "a": "en-us", "b": "en-gb"}.get(voice[:1], "es")
 
-    def synthesize(self, text, output_file=os.path.join(ROOT_DIR, ".mp", "audio.wav")):
+    def synthesize(
+        self,
+        text,
+        output_file=os.path.join(ROOT_DIR, ".mp", "audio.wav"),
+        voice=None,
+    ):
+        # Per-account voice override (e.g. the EN channel's am_/af_ voices)
+        voice = voice or self._voice
         if self._provider == "edge":
             return self._synthesize_edge(text, output_file)
 
         if self._provider == "kokoro":
             samples, rate = self._kokoro.create(
-                text, voice=self._voice, speed=1.05, lang=self._kokoro_lang(self._voice)
+                text, voice=voice, speed=1.05, lang=self._kokoro_lang(voice)
             )
             sf.write(output_file, samples, rate)
             self._voice_polish(output_file)
             return output_file
 
-        audio = self._model.generate(text, voice=self._voice)
+        audio = self._model.generate(text, voice=voice)
         sf.write(output_file, audio, KITTEN_SAMPLE_RATE)
         return output_file
 

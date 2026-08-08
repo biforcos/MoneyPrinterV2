@@ -130,6 +130,11 @@ def main() -> None:
         action="store_true",
         help="genera solo mientras el siguiente tema pendiente sea una noticia",
     )
+    parser.add_argument(
+        "--account",
+        default="",
+        help="nickname de la cuenta a usar (por defecto, la primera)",
+    )
     args = parser.parse_args()
 
     acquire_single_instance_lock()
@@ -138,7 +143,14 @@ def main() -> None:
     accounts = get_accounts("youtube")
     if not accounts:
         raise SystemExit("No hay cuentas de YouTube configuradas (crea una en la app).")
-    account = accounts[0]
+    if args.account:
+        account = next(
+            (a for a in accounts if a.get("nickname") == args.account), None
+        )
+        if account is None:
+            raise SystemExit(f"Cuenta no encontrada: {args.account}")
+    else:
+        account = accounts[0]
     print(f"[batch] Cuenta: {account['nickname']} | nicho: {account['niche']}")
 
     tts = TTS()

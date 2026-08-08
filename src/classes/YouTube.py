@@ -88,6 +88,22 @@ class YouTube:
         self._fp_profile_path: str = fp_profile_path
         self._niche: str = niche
         self._language: str = language
+        self._spanish: bool = "spanish" in str(language).lower()
+
+        # Optional per-account overrides (voices, CTA, queue access) live
+        # in the same cache entry, so every entry point (main, cron,
+        # batch, retries) picks them up without passing extra arguments
+        try:
+            extras = next(
+                (a for a in get_accounts("youtube") if a.get("id") == account_uuid),
+                {},
+            )
+        except Exception:
+            extras = {}
+        self._tts_voice: str = (extras.get("tts_voice") or "").strip()
+        self._tts_voice_b: str = (extras.get("tts_voice_b") or "").strip()
+        self._subscribe_cta: str = (extras.get("subscribe_cta") or "").strip()
+        self._use_queues: bool = bool(extras.get("use_queues", True))
 
         self.images = []
         # image path -> animated clip path (img2vid), filled when enabled
@@ -123,7 +139,10 @@ class YouTube:
         Returns:
             slot (datetime): The datetime to schedule the next video at.
         """
-        state_path = os.path.join(ROOT_DIR, ".mp", "schedule_state.json")
+        # Per-account state: each channel fills its own slot cascade
+        state_path = os.path.join(
+            ROOT_DIR, ".mp", f"schedule_state_{self._account_uuid}.json"
+        )
         floor = datetime.now() + timedelta(hours=1)
         try:
             with open(state_path, "r", encoding="utf-8") as f:
@@ -415,7 +434,9 @@ class YouTube:
         # evergreen topics keep their slot in the cascade
         self._news_immediate = False
 
-        news_item = self._pop_queued_news()
+        # Accounts with use_queues=false (e.g. the EN clone) never touch
+        # the shared news/topics queues; they auto-generate instead
+        news_item = self._pop_queued_news() if self._use_queues else None
         # Remember what was consumed so a failed generation can put it back
         self._consumed_news_item = news_item
         self._consumed_topic_line = None
@@ -424,7 +445,7 @@ class YouTube:
             self.topic_context = news_item.get("contexto") or None
             self._news_immediate = True
         else:
-            queued = self._pop_queued_topic()
+            queued = self._pop_queued_topic() if self._use_queues else None
             self._consumed_topic_line = queued
             # A hand-written topic may carry grounding facts after "||":
             # the script must then stick to those facts
@@ -501,7 +522,7 @@ class YouTube:
         # provider and a second voice configured)
         self._dialogue = (
             get_tts_provider() in ("edge", "kokoro")
-            and bool(get_tts_voice_b())
+            and bool(self._tts_voice_b or get_tts_voice_b())
             and random.random() < get_dialogue_ratio()
         )
         # Remembered so generate_prompts derives the image count from the
@@ -1367,15 +1388,17 @@ class YouTube:
                 warning(f"Music mood classification failed: {str(e)}")
         return None
 
-    @staticmethod
-    def _fix_caption_text(text: str) -> str:
+    def _fix_caption_text(self, text: str) -> str:
         """
         Whisper writes what it hears, and en español eso pierde haches
         mudas ("hadas" -> "adas") o deforma anglicismos. Replaces known
         mishearings with the canonical spelling from
         correcciones_subtitulos.json (longest first, whole words,
         case-insensitive) before the text reaches captions or overlays.
+        The dictionary is Spanish-specific, so other languages skip it.
         """
+        if not getattr(self, "_spanish", True):
+            return text
         path = os.path.join(ROOT_DIR, "correcciones_subtitulos.json")
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -1399,6 +1422,10 @@ class YouTube:
         must stay identical; subtitles are unaffected (Whisper transcribes
         the audio and restores canonical spellings).
         """
+        if not self._spanish:
+            # The respelling exists so a SPANISH voice can pronounce
+            # English terms; a native English voice needs none of it
+            return script
         script = self._apply_pronunciation_glossary(script)
         polished = generate_text(
             "Eres el corrector de locución de un canal español de YouTube. "
@@ -1484,7 +1511,9 @@ class YouTube:
         if getattr(self, "loop_ending", False):
             cta = (getattr(self, "cta", "") or "").strip()
         else:
-            cta = (getattr(self, "cta", "") or get_subscribe_cta()).strip()
+            cta = (
+                getattr(self, "cta", "") or self._subscribe_cta or get_subscribe_cta()
+            ).strip()
 
         def clean(text):
             # Keep commas/ellipses (narration pauses) and Spanish ¿¡
@@ -1496,11 +1525,13 @@ class YouTube:
             else None
         )
 
-        if segments and get_tts_provider() in ("edge", "kokoro") and get_tts_voice_b():
+        voice_a = self._tts_voice or get_tts_voice()
+        voice_b = self._tts_voice_b or get_tts_voice_b()
+        if segments and get_tts_provider() in ("edge", "kokoro") and voice_b:
             if cta:
                 last_speaker = segments[-1][0]
                 segments.append(("B" if last_speaker == "A" else "A", cta))
-            voices = {"A": get_tts_voice(), "B": get_tts_voice_b()}
+            voices = {"A": voice_a, "B": voice_b}
             voiced = [(voices[s], clean(t)) for s, t in segments]
             self.script = " ".join(text for _, text in voiced)
             tts_instance.synthesize_dialogue(voiced, path)
@@ -1512,7 +1543,7 @@ class YouTube:
             if cta:
                 self.script = f"{self.script.rstrip()} {cta}"
             self.script = clean(self.script)
-            tts_instance.synthesize(self.script, path)
+            tts_instance.synthesize(self.script, path, voice=voice_a or None)
 
         self.tts_path = path
 
@@ -2108,8 +2139,8 @@ class YouTube:
         else:
             # Build the closing CTA while the LLM is still loaded: tease the
             # next queued topic when there is one, else the fixed CTA
-            self.cta = get_subscribe_cta().strip()
-            next_topic = self._peek_queued_topic()
+            self.cta = (self._subscribe_cta or get_subscribe_cta()).strip()
+            next_topic = self._peek_queued_topic() if self._use_queues else None
         if next_topic:
             bell_hint = (
                 ' Refer to the notification bell as "la campanita".'
