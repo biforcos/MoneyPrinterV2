@@ -126,14 +126,18 @@ def _parse_duration_seconds(text):
 def _parse_retention_metrics(page_text):
     """Busca las métricas en el texto de la pestaña Interacción de un Short.
 
-    Studio pinta la etiqueta y el valor en líneas contiguas, así que se
-    busca el valor en una ventana de 3 líneas desde cada etiqueta.
+    Studio pinta el valor junto a la etiqueta en líneas contiguas, pero el
+    lado varía: la tarjeta de la curva pone "Se quedaron viendo" y el % en
+    la línea siguiente; la sección "Cómo han interactuado los usuarios"
+    pone "40,0 % 60,0 %" en la línea ANTERIOR (el primer % es el de
+    quedarse viendo). La ventana cubre ambos lados y el primer % del par
+    es siempre el correcto.
     """
     lines = [l.strip() for l in page_text.split("\n") if l.strip()]
     out = {"retencion_pct": None, "dur_media_s": None}
     for i, line in enumerate(lines):
         low = line.lower()
-        window = " ".join(lines[i : i + 3])
+        window = " ".join(lines[max(0, i - 1) : i + 3])
         if out["retencion_pct"] is None and any(k in low for k in RETENTION_LABELS):
             match = re.search(r"(\d+(?:[.,]\d+)?)\s*%", window)
             if match:
@@ -176,7 +180,10 @@ def scrape_video_retention(browser, video_id):
         time.sleep(4)
         page_text = browser.find_element(By.TAG_NAME, "body").text
         metrics = _parse_retention_metrics(page_text)
-        if metrics["retencion_pct"] is not None or metrics["dur_media_s"] is not None:
+        # La duración media renderiza antes que la tarjeta de retención:
+        # esperar a la retención y conformarse con lo parcial solo al agotar
+        # los reintentos.
+        if metrics["retencion_pct"] is not None:
             break
     return metrics
 
