@@ -56,7 +56,7 @@ def parse_number(text):
     return int(value)
 
 
-def scrape_shorts():
+def open_studio_browser():
     account = get_accounts("youtube")[0]
     opts = Options()
     opts.add_argument("--headless")
@@ -64,9 +64,15 @@ def scrape_shorts():
     opts.add_argument("--height=1200")
     opts.add_argument("-profile")
     opts.add_argument(account["firefox_profile"])
-    browser = webdriver.Firefox(
+    return webdriver.Firefox(
         service=Service(GeckoDriverManager().install()), options=opts
     )
+
+
+def scrape_shorts(browser=None):
+    own_browser = browser is None
+    if own_browser:
+        browser = open_studio_browser()
     videos = []
     try:
         browser.get("https://studio.youtube.com")
@@ -99,8 +105,57 @@ def scrape_shorts():
                 entry["comments"] = numbers[-1] if len(numbers) > 1 else 0
             videos.append(entry)
     finally:
-        browser.quit()
+        if own_browser:
+            browser.quit()
     return videos
+
+
+# Etiquetas de la pestaña "Interacción" de un Short en Studio (español)
+RETENTION_LABELS = ("se quedaron viendo",)
+DURATION_LABELS = ("duración media",)
+
+
+def _parse_duration_seconds(text):
+    match = re.search(r"(\d+):(\d{2})", text)
+    if not match:
+        return None
+    return int(match.group(1)) * 60 + int(match.group(2))
+
+
+def _parse_retention_metrics(page_text):
+    """Busca las métricas en el texto de la pestaña Interacción de un Short.
+
+    Studio pinta la etiqueta y el valor en líneas contiguas, así que se
+    busca el valor en una ventana de 3 líneas desde cada etiqueta.
+    """
+    lines = [l.strip() for l in page_text.split("\n") if l.strip()]
+    out = {"retencion_pct": None, "dur_media_s": None}
+    for i, line in enumerate(lines):
+        low = line.lower()
+        window = " ".join(lines[i : i + 3])
+        if out["retencion_pct"] is None and any(k in low for k in RETENTION_LABELS):
+            match = re.search(r"(\d+(?:[.,]\d+)?)\s*%", window)
+            if match:
+                out["retencion_pct"] = float(match.group(1).replace(",", "."))
+        if out["dur_media_s"] is None and any(k in low for k in DURATION_LABELS):
+            out["dur_media_s"] = _parse_duration_seconds(window)
+        if out["retencion_pct"] is not None and out["dur_media_s"] is not None:
+            break
+    return out
+
+
+def scrape_video_retention(browser, video_id):
+    browser.get(
+        f"https://studio.youtube.com/video/{video_id}/analytics/tab-interest_viewers/period-default"
+    )
+    metrics = {"retencion_pct": None, "dur_media_s": None}
+    for _ in range(6):
+        time.sleep(4)
+        page_text = browser.find_element(By.TAG_NAME, "body").text
+        metrics = _parse_retention_metrics(page_text)
+        if metrics["retencion_pct"] is not None or metrics["dur_media_s"] is not None:
+            break
+    return metrics
 
 
 def main():
