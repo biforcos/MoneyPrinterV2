@@ -39,6 +39,7 @@ from llm_provider import select_model, generate_text
 
 INSIGHTS_PATH = os.path.join(ROOT, ".mp", "audience_insights.json")
 REPORT_PATH = os.path.join(ROOT, "logs", "channel_report.json")
+DAILY_PATH = os.path.join(ROOT, "logs", "analytics_daily.json")
 
 VISIBILITY_WORDS = ("Público", "Programado", "Privado", "Oculto", "Borrador")
 
@@ -144,6 +145,28 @@ def _parse_retention_metrics(page_text):
     return out
 
 
+def _norm_title(text):
+    return " ".join(re.sub(r"[\W_]+", " ", (text or "").lower()).split())[:60]
+
+
+def _load_retention_map():
+    """Título normalizado -> métricas de retención del último bucle diario."""
+    try:
+        with open(DAILY_PATH, encoding="utf-8") as fh:
+            daily = json.load(fh)
+    except Exception:
+        return {}
+    out = {}
+    for v in daily.get("videos", []):
+        if v.get("retencion_pct") is None and v.get("dur_media_s") is None:
+            continue
+        out[_norm_title(v.get("title"))] = {
+            "retencion_pct": v.get("retencion_pct"),
+            "dur_media_s": v.get("dur_media_s"),
+        }
+    return out
+
+
 def scrape_video_retention(browser, video_id):
     browser.get(
         f"https://studio.youtube.com/video/{video_id}/analytics/tab-interest_viewers/period-default"
@@ -198,16 +221,27 @@ def main():
         return
 
     select_model(get_ollama_model())
-    table = "\n".join(
-        f"- {v.get('views', 0)} vistas, {v.get('comments', 0)} comentarios "
-        f"({v.get('date', '?')}): {v['title']}"
-        for v in public
-    )
+    retention_map = _load_retention_map()
+
+    def _row(v):
+        base = (
+            f"- {v.get('views', 0)} vistas, {v.get('comments', 0)} comentarios "
+            f"({v.get('date', '?')}): {v['title']}"
+        )
+        metrics = retention_map.get(_norm_title(v["title"]))
+        if metrics and metrics["retencion_pct"] is not None:
+            base += f" [retención {metrics['retencion_pct']}%"
+            if metrics["dur_media_s"] is not None:
+                base += f", dur. media {metrics['dur_media_s']}s"
+            base += "]"
+        return base
+
+    table = "\n".join(_row(v) for v in public)
     analysis = generate_text(
         "Eres el analista de un canal de YouTube Shorts español de videojuegos. "
         "Con estos datos de rendimiento por vídeo, responde EN ESPAÑOL:\n"
-        "1) Qué patrones separan los vídeos con más vistas de los demás "
-        "(tema, formato del título, franquicia).\n"
+        "1) Qué patrones separan los vídeos con más vistas y más retención "
+        "de los demás (tema, formato del título, franquicia, duración).\n"
         "2) Tres recomendaciones concretas de contenido.\n"
         "3) Una lista JSON al final con este formato exacto: "
         '{"temas_ganadores": ["...", "..."]} con 3-5 temáticas a potenciar.\n\n'
