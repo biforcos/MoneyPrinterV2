@@ -253,6 +253,7 @@ def main():
     readouts = {
         "loop_ending": ab_readout(crossed, "loop_ending"),
         "news": ab_readout(crossed, "news"),
+        "short_script": ab_readout(crossed, "short_script"),
     }
     for field, groups in readouts.items():
         yes, no = groups["True"], groups["False"]
@@ -262,7 +263,7 @@ def main():
             f"no n={no['n']} mediana={no['mediana_vistas_dia']} vistas/día"
         )
 
-    retention_fields = ("loop_ending", "news", "mood", "dialogue")
+    retention_fields = ("loop_ending", "news", "mood", "dialogue", "short_script")
     ab_retencion = {f: retention_readout(crossed, f) for f in retention_fields}
     for field, groups in ab_retencion.items():
         if not groups:
