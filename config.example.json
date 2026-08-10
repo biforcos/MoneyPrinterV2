@@ -9,6 +9,7 @@
   "comfyui_base_url": "http://127.0.0.1:8188",
   "animate_scenes": false,
   "loop_ending_ratio": 0.5,
+  "short_script_ratio": 0.5,
   "nanobanana2_api_base_url": "https://generativelanguage.googleapis.com/v1beta",
   "nanobanana2_api_key": "",
   "nanobanana2_model": "gemini-3.1-flash-image-preview",

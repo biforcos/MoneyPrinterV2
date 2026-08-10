@@ -267,6 +267,17 @@ def get_loop_ending_ratio() -> float:
     with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
         return float(json.load(file).get("loop_ending_ratio", 0.5))
 
+def get_short_script_ratio() -> float:
+    """
+    Fraction of videos (0.0-1.0) that get a short script (3-4 sentences)
+    for the duration A/B; the rest use the configured sentence range.
+
+    Returns:
+        ratio (float): Probability of a short script per video
+    """
+    with open(os.path.join(ROOT_DIR, "config.json"), "r", encoding="utf-8") as file:
+        return float(json.load(file).get("short_script_ratio", 0.0))
+
 def get_script_sentence_length_range() -> list:
     """
     Gets the optional [min, max] range for script sentence count. When set,
