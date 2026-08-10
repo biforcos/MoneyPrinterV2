@@ -45,6 +45,9 @@ HISTORY_PATH = os.path.join(ROOT, "logs", "retention_history.jsonl")
 MIN_AGE_HOURS = 24
 RETENTION_MAX_VIDEOS = 15
 RETENTION_MAX_AGE_DAYS = 14
+# Con 1-2 vistas la retención es la de un único espectador (0% o 100%):
+# ruido puro que distorsiona las medianas del A/B
+MIN_RETENTION_VIEWS = 5
 
 
 def _norm(text):
@@ -133,6 +136,8 @@ def retention_readout(crossed, field):
     groups = {}
     for video in crossed:
         if field not in video or video.get("retencion_pct") is None:
+            continue
+        if (video.get("views") or 0) < MIN_RETENTION_VIEWS:
             continue
         groups.setdefault(str(video[field]), []).append(video["retencion_pct"])
     return {
