@@ -515,11 +515,17 @@ class YouTube:
         Returns:
             script (str): The script of the video.
         """
-        length_range = get_script_sentence_length_range()
-        if len(length_range) == 2:
-            sentence_length = random.randint(length_range[0], length_range[1])
+        # Duration A/B: short scripts (3-4 sentences) vs the configured
+        # range, decided per video and persisted for analytics
+        self._short_script = random.random() < get_short_script_ratio()
+        if self._short_script:
+            sentence_length = random.randint(3, 4)
         else:
-            sentence_length = get_script_sentence_length()
+            length_range = get_script_sentence_length_range()
+            if len(length_range) == 2:
+                sentence_length = random.randint(length_range[0], length_range[1])
+            else:
+                sentence_length = get_script_sentence_length()
 
         # Some videos come out as a two-host dialogue (needs the edge
         # provider and a second voice configured)
@@ -2098,6 +2104,9 @@ class YouTube:
             if get_verbose():
                 info(f" => Énfasis cinético en {len(emphasis_times)} palabras clave")
 
+        # Real duration of the final cut, persisted for the retention A/B
+        self._video_duration = round(final_clip.duration, 1)
+
         raw_path = combined_image_path + ".raw.mp4"
         # Keep MoviePy's temp audio inside .mp/ so a crash never strands
         # a TEMP_MPY_wvf_snd.mp3 in the project root (rem_temp_files only
@@ -2642,6 +2651,8 @@ class YouTube:
                     "mood": getattr(self, "music_mood", None),
                     "dialogue": bool(getattr(self, "_dialogue", False)),
                     "news": bool(getattr(self, "_news_immediate", False)),
+                    "short_script": bool(getattr(self, "_short_script", False)),
+                    "dur_video_s": getattr(self, "_video_duration", None),
                 }
             )
 
