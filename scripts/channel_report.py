@@ -284,6 +284,26 @@ def main():
     select_model(get_ollama_model())
     retention_map = _load_retention_map()
 
+    # Términos de búsqueda reales acumulados por el bucle diario
+    search_block = ""
+    try:
+        with open(
+            os.path.join(ROOT, ".mp", "search_terms.json"), encoding="utf-8"
+        ) as fh:
+            all_terms = json.load(fh).get("terminos", {})
+        top = sorted(
+            all_terms.items(), key=lambda kv: -kv[1].get("apariciones", 0)
+        )[:10]
+        if top:
+            search_block = (
+                "\n\nTérminos de búsqueda reales que traen tráfico al canal "
+                "(con sus typos): "
+                + "; ".join(term for term, _ in top)
+                + ". Ten en cuenta esta demanda de búsqueda en las recomendaciones."
+            )
+    except Exception:
+        pass
+
     def _row(v):
         base = (
             f"- {v.get('views', 0)} vistas, {v.get('comments', 0)} comentarios "
@@ -306,7 +326,8 @@ def main():
         "2) Tres recomendaciones concretas de contenido.\n"
         "3) Una lista JSON al final con este formato exacto: "
         '{"temas_ganadores": ["...", "..."]} con 3-5 temáticas a potenciar.\n\n'
-        + table,
+        + table
+        + search_block,
         think=True,
     )
     print("\n===== ANÁLISIS DEL LLM =====")

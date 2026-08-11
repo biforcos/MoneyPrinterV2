@@ -581,6 +581,12 @@ class YouTube:
         años después." NEVER open with context or generic phrases like "La
         evolución de...", "En este video..." or "¿Sabías que...".
 
+        HOLD THE REVEAL: the first sentence opens a question or mystery the
+        viewer needs answered. The middle sentences add context, stakes and
+        escalation WITHOUT resolving it. Only the LAST sentence delivers the
+        actual answer or payoff — if the viewer leaves early, they never get
+        it. EXAMPLE 2 above follows exactly this shape.
+
         THE LAST SENTENCE must connect back to the idea of the first sentence,
         so the video feels seamless when it loops and replays.
 
