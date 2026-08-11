@@ -171,6 +171,60 @@ def _load_retention_map():
     return out
 
 
+SEARCH_SECTION_LABEL = "términos de búsqueda de youtube"
+SEARCH_SOURCE_LABEL = "búsqueda de youtube"
+_PCT_RE = re.compile(r"^(\d+(?:[.,]\d+)?)\s*%$")
+
+
+def _parse_search_terms(page_text):
+    """Fuentes de tráfico + términos de búsqueda de la pestaña Cobertura.
+
+    Los términos se guardan tal cual (en minúsculas): los typos con los
+    que busca la gente son exactamente el dato que queremos.
+    """
+    lines = [l.strip() for l in page_text.split("\n") if l.strip()]
+    out = {"busqueda_pct": None, "terminos": []}
+    for i, line in enumerate(lines):
+        low = line.lower()
+        if out["busqueda_pct"] is None and low == SEARCH_SOURCE_LABEL:
+            if i + 1 < len(lines):
+                match = _PCT_RE.match(lines[i + 1])
+                if match:
+                    out["busqueda_pct"] = float(match.group(1).replace(",", "."))
+        if low == SEARCH_SECTION_LABEL and not out["terminos"]:
+            j = i + 1
+            # Cabeceras: "Visualizaciones · ...", "Proporción de todo tu
+            # tráfico:" y su porcentaje
+            while j < len(lines) and (
+                lines[j].lower().startswith(("visualizaciones", "proporción"))
+                or _PCT_RE.match(lines[j])
+            ):
+                j += 1
+            while j + 1 < len(lines) and lines[j] != "Ver más":
+                match = _PCT_RE.match(lines[j + 1])
+                if not match:
+                    break
+                out["terminos"].append(
+                    (lines[j].lower(), float(match.group(1).replace(",", ".")))
+                )
+                j += 2
+    return out
+
+
+def scrape_video_search(browser, video_id):
+    browser.get(
+        f"https://studio.youtube.com/video/{video_id}/analytics/tab-reach_viewers/period-default"
+    )
+    result = {"busqueda_pct": None, "terminos": []}
+    for _ in range(6):
+        time.sleep(4)
+        page_text = browser.find_element(By.TAG_NAME, "body").text
+        result = _parse_search_terms(page_text)
+        if result["terminos"]:
+            break
+    return result
+
+
 def scrape_video_retention(browser, video_id):
     browser.get(
         f"https://studio.youtube.com/video/{video_id}/analytics/tab-interest_viewers/period-default"
