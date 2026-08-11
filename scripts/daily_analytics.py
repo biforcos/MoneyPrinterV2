@@ -11,12 +11,13 @@ root (bot Firefox window must be closed):
     python scripts/daily_analytics.py
 """
 
+import difflib
 import json
 import os
 import re
 import statistics
 import sys
-from datetime import datetime
+from datetime import date, datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -43,6 +44,10 @@ from llm_provider import select_model, generate_text
 OUT_PATH = os.path.join(ROOT, "logs", "analytics_daily.json")
 HISTORY_PATH = os.path.join(ROOT, "logs", "retention_history.jsonl")
 SEARCH_TERMS_PATH = os.path.join(ROOT, ".mp", "search_terms.json")
+TOPICS_PATH = os.path.join(ROOT, "topics.txt")
+EVERGREEN_MIN_APARICIONES = 3
+EVERGREEN_COOLDOWN_DAYS = 30
+EVERGREEN_TITLE_WINDOW_DAYS = 21
 # Views need time to accumulate; younger videos would poison the A/B
 MIN_AGE_HOURS = 24
 RETENTION_MAX_VIDEOS = 15
@@ -179,6 +184,85 @@ def merge_search_terms(crossed):
         f"[analytics] Términos de búsqueda: {nuevos} nuevos, "
         f"{len(data['terminos'])} acumulados"
     )
+
+
+def _significant_words(text):
+    text = (text or "").lower().translate(str.maketrans("áéíóúü", "aeiouu"))
+    return [w for w in re.findall(r"[a-z0-9]+", text) if len(w) >= 4]
+
+
+def _evergreen_candidates(terms, recent_titles, today):
+    """Términos con demanda, sin cubrir hace poco y fuera de cooldown."""
+    title_words = set()
+    for title in recent_titles:
+        title_words.update(_significant_words(title))
+    out = []
+    for term, data in terms.items():
+        if data.get("apariciones", 0) < EVERGREEN_MIN_APARICIONES:
+            continue
+        propuesto = data.get("propuesto")
+        if propuesto:
+            try:
+                age = (today - date.fromisoformat(propuesto)).days
+                if age < EVERGREEN_COOLDOWN_DAYS:
+                    continue
+            except Exception:
+                pass
+        words = _significant_words(term)
+        # difflib tolera los typos de la gente: "atack" ~ "attack"
+        covered = bool(words) and all(
+            difflib.get_close_matches(w, title_words, n=1, cutoff=0.8)
+            for w in words
+        )
+        if covered:
+            continue
+        out.append((data.get("apariciones", 0), term))
+    return [term for _, term in sorted(out, reverse=True)]
+
+
+def propose_evergreen(cached_videos):
+    """Encola en topics.txt 1 tema/noche desde la demanda de búsqueda."""
+    try:
+        with open(SEARCH_TERMS_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        return
+    cutoff = datetime.now().timestamp() - EVERGREEN_TITLE_WINDOW_DAYS * 86400
+    recent_titles = []
+    for v in cached_videos:
+        try:
+            ts = datetime.strptime(v["date"], "%Y-%m-%d %H:%M:%S").timestamp()
+        except Exception:
+            continue
+        if ts >= cutoff:
+            recent_titles.append(v.get("title") or "")
+    cands = _evergreen_candidates(
+        data.get("terminos", {}), recent_titles, datetime.now().date()
+    )
+    if not cands:
+        return
+    term = cands[0]
+    tema = (
+        generate_text(
+            f'La gente busca en YouTube: "{term}". Convierte esa búsqueda en un '
+            "tema concreto y atractivo para un Short de videojuegos en español. "
+            "Devuelve SOLO el tema, en una sola línea, sin comillas.",
+            temperature=0.6,
+        )
+        .strip()
+        .splitlines()[0]
+        .strip()
+        .strip('"')
+    )
+    if not tema:
+        print(f"[analytics] Evergreen: el LLM no devolvió tema para '{term}'.")
+        return
+    with open(TOPICS_PATH, "a", encoding="utf-8") as fh:
+        fh.write(tema + "\n")
+    data["terminos"][term]["propuesto"] = datetime.now().strftime("%Y-%m-%d")
+    with open(SEARCH_TERMS_PATH, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+    print(f"[analytics] Tema evergreen encolado (búsqueda '{term}'): {tema}")
 
 
 def append_retention_history(crossed):
@@ -320,6 +404,7 @@ def main():
 
     select_model(get_ollama_model())
     refresh_insights(studio_rows)
+    propose_evergreen(cached)
 
     os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
     with open(OUT_PATH, "w", encoding="utf-8") as fh:
