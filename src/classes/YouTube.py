@@ -692,6 +692,28 @@ class YouTube:
             title = title[:97].rsplit(" ", 1)[0].rstrip("#").rstrip() + "..."
         return title
 
+    @staticmethod
+    def _matching_search_terms(subject, max_terms=5):
+        """Términos de búsqueda reales que comparten palabras con el tema."""
+        path = os.path.join(ROOT_DIR, ".mp", "search_terms.json")
+        try:
+            with open(path, encoding="utf-8") as fh:
+                terms = json.load(fh).get("terminos", {})
+        except Exception:
+            return []
+
+        def words(text):
+            text = text.lower().translate(str.maketrans("áéíóúü", "aeiouu"))
+            return {w for w in re.findall(r"[a-z0-9]+", text) if len(w) >= 4}
+
+        subject_words = words(subject)
+        scored = [
+            (data.get("apariciones", 0), term)
+            for term, data in terms.items()
+            if words(term) & subject_words
+        ]
+        return [term for _, term in sorted(scored, reverse=True)[:max_terms]]
+
     def generate_metadata(self) -> dict:
         """
         Generates Video metadata for the to-be-uploaded YouTube Short (Title, Description).
@@ -699,6 +721,21 @@ class YouTube:
         Returns:
             metadata (dict): The generated metadata.
         """
+        # Real search queries feeding the SEO loop: suggested, never forced
+        search_terms = self._matching_search_terms(self.subject)
+        search_hint = (
+            (
+                "REAL search queries people typed to find similar videos "
+                "(misspellings are intentional, keep them if you use them): "
+                + "; ".join(search_terms)
+                + ". If one fits naturally, work its wording into the text. "
+            )
+            if search_terms
+            else ""
+        )
+        if search_terms and get_verbose():
+            info(f" => Términos de búsqueda sugeridos: {search_terms}")
+
         title_style = random.choice(TITLE_STYLES)
         title = ""
         for _ in range(3):
@@ -707,6 +744,7 @@ class YouTube:
                     f"Please generate a YouTube Video Title for the following subject, including hashtags: {self.subject}. "
                     f"Write it as {title_style}. "
                     f"The title MUST be written in this language: {self.language}. "
+                    f"{search_hint}"
                     "Return ONE single title (never a numbered list of options). "
                     "Hashtags must be single words without spaces inside them. "
                     "Do not wrap it in quotes. Only return the title, nothing else. "
@@ -734,6 +772,7 @@ class YouTube:
                 "question inviting viewers to answer in the comments, and end with 2-3 "
                 "relevant hashtags on the last line. "
                 f"The description MUST be written in this language: {self.language}. "
+                f"{search_hint}"
                 "Do not use markdown formatting or quotes. Only return the description, nothing else."
             )
         )
