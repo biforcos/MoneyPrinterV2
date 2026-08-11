@@ -16,3 +16,4 @@ venv\Scripts\python.exe scripts\batch_generate.py --max 2 >> logs\nightly.log 2>
 venv\Scripts\python.exe scripts\batch_generate.py --max 1 --account theBig4EN --shutdown-comfyui >> logs\nightly.log 2>&1
 venv\Scripts\python.exe scripts\pin_comments.py >> logs\nightly.log 2>&1
 venv\Scripts\python.exe scripts\comments_check.py >> logs\nightly.log 2>&1
+venv\Scripts\python.exe scripts\related_videos.py >> logs\nightly.log 2>&1
