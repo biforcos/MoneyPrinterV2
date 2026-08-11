@@ -33,6 +33,7 @@ from channel_report import (
     INSIGHTS_PATH,
     open_studio_browser,
     scrape_video_retention,
+    scrape_video_search,
 )
 
 from cache import get_accounts
@@ -41,6 +42,7 @@ from llm_provider import select_model, generate_text
 
 OUT_PATH = os.path.join(ROOT, "logs", "analytics_daily.json")
 HISTORY_PATH = os.path.join(ROOT, "logs", "retention_history.jsonl")
+SEARCH_TERMS_PATH = os.path.join(ROOT, ".mp", "search_terms.json")
 # Views need time to accumulate; younger videos would poison the A/B
 MIN_AGE_HOURS = 24
 RETENTION_MAX_VIDEOS = 15
@@ -149,6 +151,36 @@ def retention_readout(crossed, field):
     }
 
 
+def merge_search_terms(crossed):
+    """Acumula los términos de búsqueda de la noche en search_terms.json."""
+    if not any(v.get("search_terms") for v in crossed):
+        return
+    try:
+        with open(SEARCH_TERMS_PATH, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        data = {"terminos": {}}
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    nuevos = 0
+    for video in crossed:
+        for term, pct in video.get("search_terms") or []:
+            entry = data["terminos"].setdefault(
+                term, {"apariciones": 0, "ultimo": hoy, "pct_max": 0.0}
+            )
+            if entry["apariciones"] == 0:
+                nuevos += 1
+            entry["apariciones"] += 1
+            entry["ultimo"] = hoy
+            entry["pct_max"] = max(entry["pct_max"], pct)
+    data["updated"] = datetime.now().isoformat(timespec="minutes")
+    with open(SEARCH_TERMS_PATH, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+    print(
+        f"[analytics] Términos de búsqueda: {nuevos} nuevos, "
+        f"{len(data['terminos'])} acumulados"
+    )
+
+
 def append_retention_history(crossed):
     rows = [
         v
@@ -168,6 +200,7 @@ def append_retention_history(crossed):
                         "retencion_pct": v.get("retencion_pct"),
                         "dur_media_s": v.get("dur_media_s"),
                         "vistas": v.get("views"),
+                        "busqueda_pct": v.get("busqueda_pct"),
                     },
                     ensure_ascii=False,
                 )
@@ -247,8 +280,17 @@ def main():
                 continue
             video.update(metrics)
             video["video_id"] = vid
+            try:
+                search = scrape_video_search(browser, vid)
+            except Exception as e:
+                print(f"[analytics] Búsqueda fallida para {vid}: {e}")
+                search = {"busqueda_pct": None, "terminos": []}
+            video["busqueda_pct"] = search["busqueda_pct"]
+            video["search_terms"] = search["terminos"]
     finally:
         browser.quit()
+
+    merge_search_terms(crossed)
 
     readouts = {
         "loop_ending": ab_readout(crossed, "loop_ending"),
