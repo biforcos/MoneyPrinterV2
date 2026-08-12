@@ -24,6 +24,7 @@ for stream in (sys.stdout, sys.stderr):
         pass
 
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.firefox.service import Service
@@ -149,9 +150,20 @@ def main():
     opts.add_argument("--height=1100")
     opts.add_argument("-profile")
     opts.add_argument(account["firefox_profile"])
-    browser = webdriver.Firefox(
-        service=Service(GeckoDriverManager().install()), options=opts
-    )
+    # El perfil puede tardar en liberarse si una subida acaba de cerrarse
+    # (visto en producción: "Process unexpectedly closed"); reintentar
+    browser = None
+    for attempt in range(3):
+        try:
+            browser = webdriver.Firefox(
+                service=Service(GeckoDriverManager().install()), options=opts
+            )
+            break
+        except WebDriverException as e:
+            if attempt == 2:
+                raise
+            print(f"[pin] Firefox no arrancó ({e.__class__.__name__}); reintento en 30s...")
+            time.sleep(30)
     done = 0
     try:
         browser.get("https://studio.youtube.com")
