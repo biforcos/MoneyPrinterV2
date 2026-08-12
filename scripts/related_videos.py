@@ -178,6 +178,13 @@ def main():
             continue
         videos.append(dict(v, video_id=vid))
 
+    # La noche del límite diario (31-jul) dejó registros con la misma URL
+    # rancia repetida: un ID duplicado es un registro corrupto, fuera
+    id_counts = {}
+    for v in videos:
+        id_counts[v["video_id"]] = id_counts.get(v["video_id"], 0) + 1
+    videos = [v for v in videos if id_counts[v["video_id"]] == 1]
+
     done = _load_done()
     now = datetime.now()
     pending = []
