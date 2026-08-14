@@ -213,10 +213,24 @@ def main():
             if target is None:
                 print(f"[related] {v['video_id']}: sin candidato, lo salto.")
                 continue
-            try:
-                result = set_related(browser, v["video_id"], target)
-            except Exception as e:
-                print(f"[related] {v['video_id']}: fallo ({e}); sigo.")
+            # El elegido puede no salir en el selector (borrado del canal o
+            # aún programado): reintentar con el mejor retenido
+            fallbacks = [target]
+            if (
+                retention_best
+                and retention_best.get("video_id")
+                not in (target.get("video_id"), v["video_id"])
+            ):
+                fallbacks.append(retention_best)
+            result = None
+            for candidate in fallbacks:
+                try:
+                    result = set_related(browser, v["video_id"], candidate)
+                    target = candidate
+                    break
+                except Exception as e:
+                    print(f"[related] {v['video_id']}: fallo con {candidate['video_id']} ({e})")
+            if result is None:
                 continue
             done[v["video_id"]] = {
                 "related": target["video_id"] if result == "puesto" else None,

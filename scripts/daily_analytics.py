@@ -246,6 +246,8 @@ def propose_evergreen(cached_videos):
         generate_text(
             f'La gente busca en YouTube: "{term}". Convierte esa búsqueda en un '
             "tema concreto y atractivo para un Short de videojuegos en español. "
+            "El tema debe poder cubrirse con hechos conocidos y verificables: "
+            "nada de 'exclusivas', 'misterios' ni conexiones inventadas. "
             "Devuelve SOLO el tema, en una sola línea, sin comillas.",
             temperature=0.6,
         )
