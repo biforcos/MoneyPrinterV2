@@ -49,7 +49,8 @@ STOPWORDS = {
 
 
 def _words(text):
-    text = (text or "").lower().translate(str.maketrans("áéíóúü", "aeiouu"))
+    text = (text or "").lower().replace("'", "").replace("’", "")
+    text = text.translate(str.maketrans("áéíóúü", "aeiouu"))
     return {
         w
         for w in re.findall(r"[a-z0-9]+", text)

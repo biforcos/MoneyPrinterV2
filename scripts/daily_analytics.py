@@ -187,7 +187,10 @@ def merge_search_terms(crossed):
 
 
 def _significant_words(text):
-    text = (text or "").lower().translate(str.maketrans("áéíóúü", "aeiouu"))
+    # Sin apóstrofes antes de trocear: "Man's" debe dar "mans" (como escribe
+    # la gente en las búsquedas), no "man"+"s" que caen por longitud
+    text = (text or "").lower().replace("'", "").replace("’", "")
+    text = text.translate(str.maketrans("áéíóúü", "aeiouu"))
     return [w for w in re.findall(r"[a-z0-9]+", text) if len(w) >= 4]
 
 
