@@ -4,6 +4,7 @@ REM coming days' publication slots. Invoked by the Windows Task Scheduler.
 cd /d C:\Users\bifor\Documents\Proyectos\MoneyPrinterV2
 set PYTHONUTF8=1
 set PYTHONIOENCODING=utf-8
+set PYTHONUNBUFFERED=1
 if not exist logs mkdir logs
 REM Funciones avanzadas aprobadas en ambos canales (2026-08-08): sin limite
 REM diario que esquivar. El --max 2 ES + 1 EN es eleccion deliberada de
