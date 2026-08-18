@@ -8,7 +8,10 @@ _selected_model: str | None = None
 
 
 def _client() -> ollama.Client:
-    return ollama.Client(host=get_ollama_base_url())
+    # Sin timeout, un Ollama wedged bloquea el proceso para siempre
+    # (incidente 2026-08-18); 10 min cubren de sobra el peor chat real
+    # (guion con think en qwen3:14b).
+    return ollama.Client(host=get_ollama_base_url(), timeout=600)
 
 
 def list_models() -> list[str]:
