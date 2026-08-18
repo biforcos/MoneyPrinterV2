@@ -46,6 +46,7 @@ from config import (
 )
 from llm_provider import select_model
 from utils import rem_temp_files
+from watchdog import Watchdog
 
 
 LOCK_PATH = os.path.join(ROOT, ".mp", "batch_lock.json")
@@ -137,6 +138,34 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    started = datetime.now()
+    results = []
+    run_state = {"account": ""}
+
+    def watchdog_summary():
+        return {
+            "started": started.isoformat(timespec="seconds"),
+            "finished": datetime.now().isoformat(timespec="seconds"),
+            "account": run_state["account"],
+            "status": "watchdog_timeout",
+            "produced": sum(
+                1 for r in results if r.get("status") != "generation_failed"
+            ),
+            "uploaded": sum(
+                1 for r in results if r.get("status") == "uploaded"
+            ),
+            "videos": results,
+        }
+
+    # 90 min por vídeo (los reales tardan 35-45 min con carga de modelos);
+    # también cubre el bootstrap (select_model, TTS) hasta el primer reset.
+    watchdog = Watchdog(
+        minutes=90,
+        label="batch_generate",
+        context_fn=watchdog_summary,
+        export_path=get_summary_export_path().strip(),
+    )
+
     acquire_single_instance_lock()
     ensure_local_providers()
 
@@ -152,11 +181,10 @@ def main() -> None:
     else:
         account = accounts[0]
     print(f"[batch] Cuenta: {account['nickname']} | nicho: {account['niche']}")
+    run_state["account"] = account["nickname"]
 
     tts = TTS()
     produced, uploaded, consecutive_failures = 0, 0, 0
-    started = datetime.now()
-    results = []
 
     def next_pending_is_news():
         from datetime import timedelta
@@ -185,6 +213,7 @@ def main() -> None:
                 break
             iteration = produced + 1
             print(f"\n[batch] ===== Vídeo {iteration}{f'/{args.max}' if args.max > 0 else ''} =====")
+            watchdog.reset()
             rem_temp_files()
             entry = {"status": "generation_failed"}
             iteration_start = datetime.now()
@@ -255,6 +284,7 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\n[batch] Detenido por el usuario.")
     finally:
+        watchdog.disarm()
         # Machine-readable summary for external reporting (Telegram
         # briefings etc.): always written, even after a crash
         os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
