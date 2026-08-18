@@ -332,7 +332,8 @@ def main() -> None:
                 "-NoProfile",
                 "-Command",
                 "Get-CimInstance Win32_Process | "
-                "Where-Object { $_.CommandLine -like '*ComfyUI*main.py*' } | "
+                "Where-Object { $_.Name -match '^python' -and "
+                "$_.CommandLine -like '*ComfyUI*main.py*' } | "
                 "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }",
             ],
             check=False,

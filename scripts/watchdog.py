@@ -16,9 +16,12 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# El filtro por Name evita que el patrón se matchee con la propia línea de
+# comandos de este PowerShell (se mataría a sí mismo a mitad de pipeline).
 _KILL_COMFYUI_PS = (
     "Get-CimInstance Win32_Process | "
-    "Where-Object { $_.CommandLine -like '*ComfyUI*main.py*' } | "
+    "Where-Object { $_.Name -match '^python' -and "
+    "$_.CommandLine -like '*ComfyUI*main.py*' } | "
     "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
 )
 
