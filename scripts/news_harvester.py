@@ -30,6 +30,7 @@ import feedparser
 
 from config import get_news_feeds, get_news_per_day, get_ollama_model
 from llm_provider import select_model, generate_text
+from watchdog import Watchdog
 
 SEEN_PATH = os.path.join(ROOT, ".mp", "news_seen.json")
 QUEUE_PATH = os.path.join(ROOT, "news_queue.json")
@@ -228,6 +229,10 @@ def main():
     )
     args = parser.parse_args()
 
+    # La cosecha + redactor jefe tarda minutos; 30 min = cuelgue seguro
+    # (el 18-08 estuvo 10h bloqueado en una llamada LLM).
+    watchdog = Watchdog(minutes=30, label="news_harvester", kill_comfyui=False)
+
     select_model(get_ollama_model())
     seen = load_seen()
     recent = load_recent()
@@ -236,11 +241,13 @@ def main():
     print(f"[news] Candidatas totales: {len(candidates)}")
     if not candidates:
         print("[news] Nada nuevo que cosechar.")
+        watchdog.disarm()
         return
 
     picked = pick_stories(candidates, args.count or get_news_per_day(), recent)
     if not picked:
         print("[news] El redactor jefe no eligió ninguna.")
+        watchdog.disarm()
         return
 
     from datetime import datetime
@@ -266,6 +273,7 @@ def main():
     with open(RECENT_PATH, "w", encoding="utf-8") as fh:
         json.dump(recent[-40:], fh, ensure_ascii=False, indent=1)
     print(f"[news] {len(items)} noticias añadidas a news_queue.json")
+    watchdog.disarm()
 
 
 if __name__ == "__main__":
